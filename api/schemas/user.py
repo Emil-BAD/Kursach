@@ -46,6 +46,12 @@ class UserResponse(BaseModel):
     course: int
     faculty: str
     created_at: datetime
+    points: dict
     
     class Config:
         from_attributes = True
+
+class PointsHistory(BaseModel):
+    change: int
+    reason: str
+    date: datetime
