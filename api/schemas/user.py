@@ -36,10 +36,13 @@ class UserResponse(BaseModel):
     full_name: str
     contact_number: int
     dormitory_id: int
+    dormitory_name: str
     room_id: int
+    room_number: int
     group_number: int | None
     specialization: str | None
     role_id: int
+    role_name: str
     email: str | None
     phone: str | None
     birth_date: date
