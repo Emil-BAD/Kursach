@@ -5,10 +5,10 @@ from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 from typing import Optional
 
-from core.config import settings
-from core.auth import ALGORITHM
-from db.database import get_db
-from db.models import User
+from api.core.config import settings
+from api.core.auth import ALGORITHM
+from api.db.database import get_db
+from api.db.models import User
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 

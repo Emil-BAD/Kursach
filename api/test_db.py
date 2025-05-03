@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-from db.database import SessionLocal
-from db.models import User
-from core.auth import get_password_hash
+from api.db.database import SessionLocal
+from api.db.models import User
+from api.core.auth import get_password_hash
 
 # Создаем сессию
 db = SessionLocal()

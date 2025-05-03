@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-from db.database import SessionLocal
-from db.models import Role
+from api.db.database import SessionLocal
+from api.db.models import Role
 
 # Создаем сессию
 db = SessionLocal()

@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from jose import jwt
 from passlib.context import CryptContext
 
-from core.config import settings
+from api.core.config import settings
 
 ALGORITHM = "HS256"
 

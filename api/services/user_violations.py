@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 from typing import List
-from db.database import get_db
-from db.models import UserViolation, User, ViolationType
-from schemas.user_violations import UserViolationCreate, UserViolationUpdate, UserViolationResponse, PaginatedUserViolationResponse
-from core.dependencies import get_current_user, get_current_admin
+from api.db.database import get_db
+from api.db.models import UserViolation, User, ViolationType
+from api.schemas.user_violations import UserViolationCreate, UserViolationUpdate, UserViolationResponse, PaginatedUserViolationResponse
+from api.core.dependencies import get_current_user, get_current_admin
 
 router = APIRouter()
 

@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from core.config import settings
-from db.models import Base
+from api.core.config import settings
+from api.db.models import Base
 
 # Создаем движок для подключения к базе
 engine = create_engine(settings.DATABASE_URL, echo=True)

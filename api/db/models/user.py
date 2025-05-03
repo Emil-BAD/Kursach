@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from sqlalchemy import Column, Integer, String, ForeignKey, JSON, Date, DateTime, func
 from sqlalchemy.orm import relationship
-from db.models.base import Base
+from api.db.models.base import Base
 
 class User(Base):
     __tablename__ = "users"

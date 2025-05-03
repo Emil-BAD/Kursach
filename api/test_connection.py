@@ -1,5 +1,5 @@
 import psycopg2
-from core.config import settings
+from api.core.config import settings
 
 # Пробуем подключиться к базе
 try:

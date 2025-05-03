@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from sqlalchemy import Column, Integer, String, Text, Numeric, ForeignKey, DateTime, func, JSON
 from sqlalchemy.orm import relationship
-from db.models.base import Base
+from api.db.models.base import Base
 
 class Product(Base):
     __tablename__ = "products"

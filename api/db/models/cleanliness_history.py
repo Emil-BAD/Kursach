@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from sqlalchemy import Column, Integer, ForeignKey, DateTime, func
 from sqlalchemy.orm import relationship
-from db.models.base import Base
+from api.db.models.base import Base
 
 class CleanlinessHistory(Base):
     __tablename__ = "cleanliness_history"

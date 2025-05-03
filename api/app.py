@@ -2,16 +2,16 @@
 from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
 from typing import List
-from core.dependencies import get_current_user, get_current_admin
-from db.database import get_db
-from db.models import User, Dormitory, CleanlinessHistory
-from services.user import router as user_router
-from services.news import router as news_router
-from services.product import router as product_router
-from services.auth import router as auth_router
-from services.event import router as event_router
-from services.event_registration import router as event_registration_router
-from services.user_violations import router as user_violations_router
+from api.core.dependencies import get_current_user, get_current_admin
+from api.db.database import get_db
+from api.db.models import User, Dormitory, CleanlinessHistory
+from api.services.user import router as user_router
+from api.services.news import router as news_router
+from api.services.product import router as product_router
+from api.services.auth import router as auth_router
+from api.services.event import router as event_router
+from api.services.event_registration import router as event_registration_router
+from api.services.user_violations import router as user_violations_router
 
 app = FastAPI()
 

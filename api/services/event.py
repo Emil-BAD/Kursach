@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
-from db.database import get_db
-from db.models import Event, User, Category, Dormitory
-from schemas.event import PaginatedEventResponse, EventCreate, EventUpdate
-from core.dependencies import get_current_admin
+from api.db.database import get_db
+from api.db.models import Event, User, Category, Dormitory
+from api.schemas.event import PaginatedEventResponse, EventCreate, EventUpdate
+from api.core.dependencies import get_current_admin
 
 router = APIRouter()
 
