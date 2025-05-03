@@ -34,7 +34,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     return user
 
 def get_current_active_user(current_user: User = Depends(get_current_user)) -> User:
-    if not user:  # Предполагается, что user не None, но добавим проверку
+    if not current_user:  # Предполагается, что user не None, но добавим проверку
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Пользователь не активен")
     return current_user
 

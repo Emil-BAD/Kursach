@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime, timedelta
 from jose import jwt
+from jose.exceptions import JWTError
 from passlib.context import CryptContext
 
 from api.core.config import settings
