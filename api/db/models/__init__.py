@@ -20,6 +20,7 @@ from db.models.notification_settings import NotificationSettings
 from db.models.notification import Notification
 from db.models.cleanliness_history import CleanlinessHistory
 from db.models.action_log import ActionLog
+from db.models.refresh_token import RefreshToken
 
 __all__ = [
     "Base",
@@ -41,4 +42,5 @@ __all__ = [
     "NotificationSettings",
     "Notification",
     "ActionLog",
+    "RefreshToken"
 ]
