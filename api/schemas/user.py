@@ -46,13 +46,15 @@ class UserRegister(BaseModel):
     course: int = None
     faculty: str = None
 
+from typing import List
+
 class UserResponse(BaseModel):
     id: int
     student_card: str
     full_name: str
     contact_number: int
     dormitory_id: int
-    dormitory_name: str
+    dormitory_name: str | None  # Сделали опциональным
     room_id: int
     room_number: int
     group_number: int | None
@@ -61,9 +63,9 @@ class UserResponse(BaseModel):
     role_name: str
     email: str | None
     phone: str | None
-    birth_date: date
-    course: int
-    faculty: str
+    birth_date: date | None  # Сделали опциональным
+    course: int | None  # Сделали опциональным
+    faculty: str | None  # Сделали опциональным
     created_at: datetime
     points: dict
     
@@ -76,7 +78,7 @@ class PointsHistory(BaseModel):
     date: datetime
 
 class PaginatedUserResponse(BaseModel):
-    items: list[UserResponse]
+    items: List[UserResponse]  # Используем List для явной типизации
     total: int
     page: int = Field(ge=1, default=1)
     size: int = Field(ge=1, le=100, default=10)

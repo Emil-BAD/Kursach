@@ -29,7 +29,6 @@ class User(Base):
     role = relationship("Role", back_populates="users")
     dormitory = relationship("Dormitory", back_populates="users")
     room = relationship("Room", back_populates="users")
-    violations = relationship("UserViolation", back_populates="user")
     activities = relationship("UserActivity", back_populates="user")
     news = relationship("News", back_populates="author")
     events = relationship("Event", back_populates="organizer")
@@ -40,3 +39,4 @@ class User(Base):
     notifications = relationship("Notification", back_populates="user")
     action_logs = relationship("ActionLog", back_populates="user")
     cleanliness_history = relationship("CleanlinessHistory", back_populates="assigned_by_user")
+    user_violations = relationship("UserViolation", back_populates="user")

@@ -1,29 +1,29 @@
-from pydantic import BaseModel, Field
-from datetime import date, datetime
-from enum import Enum
+from pydantic import BaseModel
+from typing import List, Optional
+from datetime import datetime
 
-class ProductStatus(str, Enum):
-    PENDING = "pending"
-    APPROVED = "approved"
-    REJECTED = "rejected"
-
-class ProductCreate(BaseModel):
+class ProductBase(BaseModel):
     title: str
     description: str
     price: float
-    image_url: list[str] | None = None
+    image_urls: Optional[dict] = None
     category_id: int
-    dormitory_id: int
+    dormitory_id: Optional[int] = None
 
-class ProductUpdate(BaseModel):
-    title: str | None = None
-    description: str | None = None
-    price: float | None = None
-    image_url: list[str] | None = None
-    category_id: int | None = None
-    dormitory_id: int | None = None
-    status: ProductStatus | None = None
-    rejection_reason: str | None = None
+class ProductCreate(ProductBase):
+    pass
+
+class ProductUpdate(ProductBase):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    price: Optional[float] = None
+    image_urls: Optional[dict] = None
+    category_id: Optional[int] = None
+    dormitory_id: Optional[int] = None
+
+class ProductModeration(BaseModel):
+    status: str  # "pending", "approved", "rejected"
+    rejection_reason: Optional[str] = None
 
 class ProductResponse(BaseModel):
     id: int
@@ -33,19 +33,23 @@ class ProductResponse(BaseModel):
     seller_id: int
     seller_name: str
     created_at: datetime
-    image_url: list[str] | None
+    image_urls: Optional[dict] = None
     category_id: int
     category_name: str
-    dormitory_id: int
-    dormitory_name: str
-    status: ProductStatus
-    rejection_reason: str | None
-    
+    status: str
+    dormitory_id: Optional[int] = None
+    dormitory_name: Optional[str] = None
+    rejection_reason: Optional[str] = None
+
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 class PaginatedProductResponse(BaseModel):
+    items: List[ProductResponse]
     total: int
     page: int
-    per_page: int
-    items: list[ProductResponse]
+    size: int
+    total_pages: int
+
+    class Config:
+        orm_mode = True

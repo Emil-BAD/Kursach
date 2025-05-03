@@ -17,16 +17,17 @@ from .news import (
 
 # Импортируем схемы из product.py
 from .product import (
-    ProductStatus,
+    ProductBase,
     ProductCreate,
     ProductUpdate,
+    ProductModeration,
     ProductResponse,
     PaginatedProductResponse
 )
 
 # Импортируем схемы из event.py
 from .event import (
-    EventStatus,
+    EventBase,
     EventCreate,
     EventUpdate,
     EventResponse,
@@ -64,22 +65,29 @@ __all__ = [
     "PointsHistory",
     "PaginatedUserResponse",
     # News
-    "NewsCreate",
+    "NewsBase",
     "NewsUpdate",
     "NewsResponse",
     "PaginatedNewsResponse",
     # Product
-    "ProductStatus",
+    "ProductBase",
     "ProductCreate",
+    "ProductModeration",
     "ProductUpdate",
     "ProductResponse",
     "PaginatedProductResponse",
     # Event
-    "EventStatus",
+    "EventBase",
     "EventCreate",
     "EventUpdate",
     "EventResponse",
     "PaginatedEventResponse",
+    # User_violations
+    "UserViolationBase",
+    "UserViolationCreate",
+    "UserViolationUpdate",
+    "UserViolationResponse",
+    "PaginatedUserViolationResponse"
     # Log
     "ModerationAction",
     "ActionLogResponse",

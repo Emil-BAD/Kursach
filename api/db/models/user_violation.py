@@ -8,9 +8,11 @@ class UserViolation(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     violation_type_id = Column(Integer, ForeignKey("violation_types.id"), nullable=False)
+    violation_date = Column(TIMESTAMP, nullable=False)
+    penalty_points = Column(Integer, nullable=False)
     description = Column(Text, nullable=False)
     created_at = Column(TIMESTAMP, nullable=False, server_default="CURRENT_TIMESTAMP")
 
     # Связи
-    user = relationship("User", back_populates="violations")
+    user = relationship("User", back_populates="user_violations")
     violation_type = relationship("ViolationType", back_populates="user_violations")

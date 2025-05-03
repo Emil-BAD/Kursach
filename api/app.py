@@ -9,11 +9,17 @@ from services.user import router as user_router
 from services.news import router as news_router
 from services.product import router as product_router
 from services.auth import router as auth_router
+from services.event import router as event_router
+from services.event_registration import router as event_registration_router
+from services.user_violations import router as user_violations_router
 
 app = FastAPI()
 
 app.include_router(user_router, tags=["users"])
+app.include_router(user_violations_router, tags=["user_violations"])
 app.include_router(news_router, tags=["news"])
+app.include_router(event_router, tags=["event"])
+app.include_router(event_registration_router, tags=["event_registration"])
 app.include_router(product_router, tags=["product"])
 app.include_router(auth_router, tags=["auth"])
 

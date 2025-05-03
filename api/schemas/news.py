@@ -1,21 +1,25 @@
-from pydantic import BaseModel, Field
-from datetime import date, datetime
+from pydantic import BaseModel
+from typing import List, Optional
+from datetime import datetime
 
-class NewsCreate(BaseModel):
+class NewsBase(BaseModel):
     title: str
     content: str
-    image_url: str | None = None
+    image_url: Optional[str] = None
     category_id: int
-    dormitory_id: int
-    is_private: bool = False
+    dormitory_id: Optional[int] = None
+    is_private: Optional[bool] = False
 
-class NewsUpdate(BaseModel):
-    title: str | None = None
-    content: str | None = None
-    image_url: str | None = None
-    category_id: int | None = None
-    dormitory_id: int | None = None
-    is_private: bool | None = None
+class NewsCreate(NewsBase):
+    pass
+
+class NewsUpdate(NewsBase):
+    title: Optional[str] = None
+    content: Optional[str] = None
+    image_url: Optional[str] = None
+    category_id: Optional[int] = None
+    dormitory_id: Optional[int] = None
+    is_private: Optional[bool] = None
 
 class NewsResponse(BaseModel):
     id: int
@@ -24,18 +28,22 @@ class NewsResponse(BaseModel):
     created_at: datetime
     author_id: int
     author_name: str
-    image_url: str | None
+    image_url: Optional[str] = None
     category_id: int
     category_name: str
-    dormitory_id: int | None
-    dormitory_name: str | None
+    dormitory_id: Optional[int] = None
+    dormitory_name: Optional[str] = None
     is_private: bool
 
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 class PaginatedNewsResponse(BaseModel):
+    items: List[NewsResponse]
     total: int
     page: int
     per_page: int
-    items: list[NewsResponse]
+    total_pages: int
+
+    class Config:
+        orm_mode = True
