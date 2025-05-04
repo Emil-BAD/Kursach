@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 
 router = APIRouter()
 
-@router.post("/login")
+@router.post("auth/login")
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     # Поиск пользователя по student_card вместо email
     user = db.query(User).filter(User.student_card == form_data.username).first()
@@ -51,7 +51,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         "token_type": "bearer"
     }
 
-@router.post("/refresh")
+@router.post("auth/refresh")
 def refresh(refresh_token: str, db: Session = Depends(get_db)):
     try:
         payload = jwt.decode(refresh_token, settings.SECRET_KEY, algorithms=["HS256"])
@@ -77,14 +77,14 @@ def refresh(refresh_token: str, db: Session = Depends(get_db)):
         "token_type": "bearer"
     }
 
-@router.post("/invalidate")
+@router.post("auth/invalidate")
 def invalidate_tokens(user_id: int = Depends(get_current_user), db: Session = Depends(get_db)):
     # Удаляем все refresh токены пользователя
     db.query(RefreshToken).filter(RefreshToken.user_id == user_id).delete()
     db.commit()
     return {"message": "Все токены аннулированы"}
 
-@router.post("/register")
+@router.post("auth/register")
 def register(user_data: UserRegister, db: Session = Depends(get_db)):
     # Проверяем, существует ли пользователь с таким student_card
     existing_user = db.query(User).filter(User.student_card == user_data.student_card).first()
