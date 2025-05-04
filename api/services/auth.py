@@ -4,7 +4,6 @@ from sqlalchemy.orm import Session
 from api.db.database import get_db
 from api.db.models import User, Role, Dormitory, Room, RefreshToken
 from api.schemas.user import UserRegister
-from api.schemas.loginrequest import LoginRequest
 from api.core.auth import create_access_token, create_refresh_token, verify_password, get_password_hash
 from api.core.dependencies import get_current_user
 from api.core.config import settings
@@ -14,21 +13,30 @@ from datetime import datetime, timedelta
 router = APIRouter()
 
 @router.post("/auth/login")
-def login(payload: LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.student_card == payload.username).first()
-    if not user or not verify_password(payload.password, user.password_hash):
+def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    # Поиск пользователя по student_card вместо email
+    user = db.query(User).filter(User.student_card == form_data.username).first()
+    if not user:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Неверный student_card или пароль",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+             status_code=status.HTTP_401_UNAUTHORIZED,
+             detail="Неверный student_card или пароль",
+             headers={"WWW-Authenticate": "Bearer"},
+         )
+    
+    if not verify_password(form_data.password, user.password_hash):
+         raise HTTPException(
+             status_code=status.HTTP_401_UNAUTHORIZED,
+             detail="Неверный student_card или пароль",
+             headers={"WWW-Authenticate": "Bearer"},
+         )
 
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     refresh_token_expires = timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-
+    
     access_token = create_access_token(data={"sub": str(user.id)}, expires_delta=access_token_expires)
     refresh_token = create_refresh_token(data={"sub": str(user.id)}, expires_delta=refresh_token_expires)
 
+    # Сохраняем refresh token в базе
     refresh = RefreshToken(
         user_id=user.id,
         token=refresh_token,
