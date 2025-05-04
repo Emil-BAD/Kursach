@@ -47,7 +47,7 @@ def get_events(
                 "created_at": event.created_at,
                 "organizer_id": event.organizer_id,
                 "organizer_name": organizer.full_name if organizer else "Unknown",
-                "image_urls": event.image_url,
+                "image_urls": event.image_urls,
                 "category_id": event.category_id,
                 "category_name": category.name if category else "Unknown",
                 "status": event.status,
