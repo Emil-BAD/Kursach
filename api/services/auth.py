@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from api.db.database import get_db
 from api.db.models import User, Role, Dormitory, Room, RefreshToken
 from api.schemas.user import UserRegister
+from api.schemas.loginrequest import LoginRequest
 from api.core.auth import create_access_token, create_refresh_token, verify_password, get_password_hash
 from api.core.dependencies import get_current_user
 from api.core.config import settings
