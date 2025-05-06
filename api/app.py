@@ -12,10 +12,12 @@ from api.services.auth import router as auth_router
 from api.services.event import router as event_router
 from api.services.event_registration import router as event_registration_router
 from api.services.user_violations import router as user_violations_router
+from api.services.cleanliness import router as cleanliness_router
 
 app = FastAPI()
 
 app.include_router(user_router, tags=["users"])
+app.include_router(cleanliness_router, tags=["cleanliness"])
 app.include_router(user_violations_router, tags=["user_violations"])
 app.include_router(news_router, tags=["news"])
 app.include_router(event_router, tags=["event"])
@@ -29,7 +31,8 @@ def read_users_me(current_user: User = Depends(get_current_user)):
     return {
         "user_id": current_user.id,
         "full_name": current_user.full_name,
-        "role": current_user.role.role_name
+        "role": current_user.role.role_name,
+        "dormitory_id": current_user.dormitory_id
     }
 
 @app.get("/admin-only")
