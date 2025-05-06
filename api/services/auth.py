@@ -63,17 +63,34 @@ def refresh(refresh_token: str, db: Session = Depends(get_db)):
     except jwt.JWTError:
         raise HTTPException(status_code=401, detail="Неверный refresh токен")
 
-    # Проверяем, есть ли refresh token в базе и не истёк ли он
     stored_token = db.query(RefreshToken).filter(RefreshToken.token == refresh_token).first()
     if not stored_token or stored_token.expires_at < datetime.utcnow():
         raise HTTPException(status_code=401, detail="Refresh токен недействителен")
 
-    # Создаём новый access token
+    # Удаляем старый refresh_token
+    db.delete(stored_token)
+    db.commit()
+
+    # Создаём новый access_token
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(data={"sub": str(user_id)}, expires_delta=access_token_expires)
 
+    # Создаём новый refresh_token
+    refresh_token_expires = timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    new_refresh_token = create_refresh_token(data={"sub": str(user_id)}, expires_delta=refresh_token_expires)
+
+    # Сохраняем новый refresh_token в базе
+    new_refresh = RefreshToken(
+        user_id=int(user_id),
+        token=new_refresh_token,
+        expires_at=datetime.utcnow() + refresh_token_expires
+    )
+    db.add(new_refresh)
+    db.commit()
+
     return {
         "access_token": access_token,
+        "refresh_token": new_refresh_token,
         "token_type": "bearer"
     }
 
