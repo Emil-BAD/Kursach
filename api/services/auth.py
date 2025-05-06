@@ -30,7 +30,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
              headers={"WWW-Authenticate": "Bearer"},
          )
 
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token_expires = timedelta(days=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     refresh_token_expires = timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     
     access_token = create_access_token(data={"sub": str(user.id)}, expires_delta=access_token_expires)
@@ -72,7 +72,7 @@ def refresh(refresh_token: str, db: Session = Depends(get_db)):
     db.commit()
 
     # Создаём новый access_token
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token_expires = timedelta(days=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(data={"sub": str(user_id)}, expires_delta=access_token_expires)
 
     # Создаём новый refresh_token
@@ -146,7 +146,7 @@ def register(user_data: UserRegister, db: Session = Depends(get_db)):
     db.refresh(new_user)
 
     # Генерируем токены для нового пользователя
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token_expires = timedelta(days=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     refresh_token_expires = timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     
     access_token = create_access_token(data={"sub": str(new_user.id)}, expires_delta=access_token_expires)
