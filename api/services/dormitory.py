@@ -24,6 +24,17 @@ def create_dormitory(
     db.refresh(dormitory)
     return dormitory
 
+# Новый маршрут: Получение списка всех общежитий
+@router.get("/dormitories", response_model=List[DormitoryResponse])
+def get_dormitories(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
+):
+    dormitories = db.query(Dormitory).all()
+    if not dormitories:
+        raise HTTPException(status_code=404, detail="Общежития не найдены")
+    return dormitories
+
 @router.get("/dormitories/{dormitory_id}/rooms", response_model=DormitoryWithRoomsResponse)
 def get_dormitory_rooms(
     dormitory_id: int,
@@ -35,24 +46,7 @@ def get_dormitory_rooms(
         raise HTTPException(status_code=404, detail="Общежитие не найдено")
     return dormitory
 
-# Новый маршрут: Получение списка комнат в заданном общежитии
-@router.get("/dormitories/{dormitory_id}/rooms", response_model=DormitoryWithRoomsResponse)
-def get_dormitory_rooms(
-    dormitory_id: int,
-    db: Session = Depends(get_db),  
-    current_user: User = Depends(get_current_admin)
-):
-    dormitory = db.query(Dormitory).filter(Dormitory.id == dormitory_id).first()
-    if not dormitory:
-        raise HTTPException(status_code=404, detail="Общежитие не найдено")
-
-    return DormitoryWithRoomsResponse(
-        id=dormitory.id,
-        name=dormitory.name,
-        address=dormitory.address,
-        rooms=dormitory.rooms
-    )
-
+# Удаляем дублирующий маршрут и оставляем только один для получения комнат
 # Новый маршрут: Получение списка студентов в заданной комнате
 @router.get("/rooms/{room_id}/users", response_model=List[UserResponse])
 def get_users_in_room(

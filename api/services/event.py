@@ -1,3 +1,4 @@
+# api/services/event.py
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
@@ -53,7 +54,8 @@ def get_events(
                 "status": event.status,
                 "dormitory_id": event.dormitory_id,
                 "dormitory_name": dormitory.name if dormitory else None,
-                "is_private": event.is_private
+                "is_private": event.is_private,
+                "requirements": event.requirements  # Добавляем новое поле
             }
         )
 
@@ -90,12 +92,13 @@ def create_event(
         description=event.description,
         event_date=event.event_date,
         location=event.location,
-        organizer_id=current_user.id,  # Организатор — текущий авторизованный пользователь
+        organizer_id=current_user.id,
         image_urls=event.image_urls,
         category_id=event.category_id,
         dormitory_id=event.dormitory_id,
         status=event.status,
-        is_private=event.is_private
+        is_private=event.is_private,
+        requirements=event.requirements  # Добавляем новое поле
     )
     db.add(db_event)
     db.commit()
@@ -121,6 +124,7 @@ def create_event(
         "dormitory_id": db_event.dormitory_id,
         "dormitory_name": dormitory.name if dormitory else None,
         "is_private": db_event.is_private,
+        "requirements": db_event.requirements,  # Добавляем новое поле
         "message": "Мероприятие успешно создано"
     }
 
@@ -178,6 +182,7 @@ def update_event(
         "dormitory_id": db_event.dormitory_id,
         "dormitory_name": dormitory.name if dormitory else None,
         "is_private": db_event.is_private,
+        "requirements": db_event.requirements,  # Добавляем новое поле
         "message": "Мероприятие успешно обновлено"
     }
 

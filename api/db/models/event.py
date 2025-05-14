@@ -1,3 +1,4 @@
+# api/db/models/event.py
 from sqlalchemy import Column, Integer, String, ForeignKey, Text, TIMESTAMP, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import JSONB
@@ -18,6 +19,7 @@ class Event(Base):
     status = Column(String(20), nullable=False, server_default="open")
     dormitory_id = Column(Integer, ForeignKey("dormitories.id"), nullable=True)
     is_private = Column(Boolean, nullable=False, server_default="FALSE")
+    requirements = Column(Text, nullable=True)  # Новое поле для требований
 
     # Связи
     organizer = relationship("User", back_populates="events")

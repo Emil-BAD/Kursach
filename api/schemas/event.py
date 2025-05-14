@@ -1,8 +1,7 @@
+# api/schemas/event.py
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
-
-# ... (существующие схемы, например UserResponse, PaginatedUserResponse, EventResponse)
 
 class EventBase(BaseModel):
     title: str
@@ -14,6 +13,7 @@ class EventBase(BaseModel):
     dormitory_id: Optional[int] = None
     status: Optional[str] = "open"
     is_private: Optional[bool] = False
+    requirements: Optional[str] = None  # Новое поле
 
 class EventCreate(EventBase):
     pass
@@ -28,6 +28,7 @@ class EventUpdate(EventBase):
     dormitory_id: Optional[int] = None
     status: Optional[str] = None
     is_private: Optional[bool] = None
+    requirements: Optional[str] = None  # Новое поле
 
 class EventResponse(BaseModel):
     id: int
@@ -45,6 +46,7 @@ class EventResponse(BaseModel):
     dormitory_id: Optional[int] = None
     dormitory_name: Optional[str] = None
     is_private: bool
+    requirements: Optional[str] = None  # Новое поле
 
     class Config:
         orm_mode = True
