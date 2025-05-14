@@ -27,8 +27,7 @@ def create_dormitory(
 # Новый маршрут: Получение списка всех общежитий
 @router.get("/dormitories", response_model=List[DormitoryResponse])
 def get_dormitories(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin)
+    db: Session = Depends(get_db)
 ):
     dormitories = db.query(Dormitory).all()
     if not dormitories:
