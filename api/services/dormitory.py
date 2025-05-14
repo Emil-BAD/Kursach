@@ -38,8 +38,7 @@ def get_dormitories(
 @router.get("/dormitories/{dormitory_id}", response_model=DormitoryResponse)
 def get_dormitory_by_id(
     dormitory_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin)
+    db: Session = Depends(get_db)
 ):
     dormitory = db.query(Dormitory).filter(Dormitory.id == dormitory_id).first()
     if not dormitory:
