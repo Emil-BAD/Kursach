@@ -13,11 +13,27 @@ from api.services.event import router as event_router
 from api.services.event_registration import router as event_registration_router
 from api.services.user_violations import router as user_violations_router
 from api.services.cleanliness import router as cleanliness_router
+from fastapi.middleware.cors import CORSMiddleware
 from api.services.dormitory import router as dormitory_router
 from api.services.favorite import router as favorite_router
 from api.services.category import router as category_router
 
 app = FastAPI()
+
+origins = [
+    "http://localhost:3000",  # Разрешённый фронтенд (например, React)
+    "https://your-frontend-domain.com",  # Ваш продакшен-домен
+    "http://127.0.0.1:3000",  # Дополнительный локальный домен
+    "*"  # Разрешить все домены (для тестирования, не используйте в продакшене)
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,  # Список разрешённых источников
+    allow_credentials=True,  # Разрешить передачу куки и заголовков авторизации
+    allow_methods=["*"],  # Разрешённые HTTP-методы (GET, POST, PUT, DELETE и т.д.)
+    allow_headers=["*"],  # Разрешённые заголовки
+)
 
 app.include_router(user_router, tags=["users"])
 app.include_router(category_router, tags=["categories"])
