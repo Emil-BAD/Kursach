@@ -14,17 +14,17 @@ router = APIRouter()
 def create_dormitory(
     name: str,
     address: str,
-    image_url: str | None = None,
+    image_urls: List[str] | None = None,  # Обновляем параметр в соответствии со схемой
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_admin)
 ):
-    dormitory = Dormitory(name=name, address=address, image_url=image_url)
+    dormitory = Dormitory(name=name, address=address, image_urls=image_urls)
     db.add(dormitory)
     db.commit()
     db.refresh(dormitory)
     return dormitory
 
-# Новый маршрут: Получение списка всех общежитий
+# Маршрут: Получение списка всех общежитий
 @router.get("/dormitories", response_model=List[DormitoryResponse])
 def get_dormitories(
     db: Session = Depends(get_db)
@@ -33,6 +33,18 @@ def get_dormitories(
     if not dormitories:
         raise HTTPException(status_code=404, detail="Общежития не найдены")
     return dormitories
+
+# Новый маршрут: Получение общежития по ID
+@router.get("/dormitories/{dormitory_id}", response_model=DormitoryResponse)
+def get_dormitory_by_id(
+    dormitory_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
+):
+    dormitory = db.query(Dormitory).filter(Dormitory.id == dormitory_id).first()
+    if not dormitory:
+        raise HTTPException(status_code=404, detail="Общежитие не найдено")
+    return dormitory
 
 @router.get("/dormitories/{dormitory_id}/rooms", response_model=DormitoryWithRoomsResponse)
 def get_dormitory_rooms(
@@ -45,8 +57,7 @@ def get_dormitory_rooms(
         raise HTTPException(status_code=404, detail="Общежитие не найдено")
     return dormitory
 
-# Удаляем дублирующий маршрут и оставляем только один для получения комнат
-# Новый маршрут: Получение списка студентов в заданной комнате
+# Маршрут: Получение списка студентов в заданной комнате
 @router.get("/rooms/{room_id}/users", response_model=List[UserResponse])
 def get_users_in_room(
     room_id: int,
@@ -94,7 +105,7 @@ def update_dormitory(
     dormitory_id: int,
     name: str | None = None,
     address: str | None = None,
-    image_url: str | None = None,
+    image_urls: List[str] | None = None,  # Обновляем параметр в соответствии со схемой
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_admin)
 ):
@@ -106,8 +117,8 @@ def update_dormitory(
         dormitory.name = name
     if address is not None:
         dormitory.address = address
-    if image_url is not None:
-        dormitory.image_url = image_url
+    if image_urls is not None:
+        dormitory.image_urls = image_urls
 
     db.commit()
     db.refresh(dormitory)
