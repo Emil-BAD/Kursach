@@ -11,7 +11,7 @@ class News(Base):
     content = Column(Text, nullable=False)
     created_at = Column(TIMESTAMP, nullable=False, server_default="CURRENT_TIMESTAMP")
     author_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    image_url = Column(JSONB, nullable=True)
+    image_url = Column(String, nullable=True)
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=False)
     dormitory_id = Column(Integer, ForeignKey("dormitories.id"), nullable=True)
     is_private = Column(Boolean, nullable=False, server_default="FALSE")
