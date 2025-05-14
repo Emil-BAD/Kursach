@@ -1,15 +1,89 @@
 # api/services/user.py
-# -*- coding: utf-8 -*-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from sqlalchemy.sql import func
 from api.db.database import get_db
 from api.db.models import User, Dormitory, Room, Role, UserViolation
-from api.schemas.user import PaginatedUserResponse, UserResponse, UserUpdate
+from api.schemas.user import PaginatedUserResponse, UserResponse, UserCreate, UserUpdate
 from api.core.dependencies import get_current_admin
 
 router = APIRouter()
+
+@router.post("/users", response_model=UserResponse)
+def create_user(
+    user: UserCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
+):
+    if user.dormitory_id:
+        dormitory = db.query(Dormitory).filter(Dormitory.id == user.dormitory_id).first()
+        if not dormitory:
+            raise HTTPException(status_code=400, detail="Общежитие с указанным ID не найдено")
+
+    if user.room_id:
+        room = db.query(Room).filter(Room.id == user.room_id).first()
+        if not room:
+            raise HTTPException(status_code=400, detail="Комната с указанным ID не найдена")
+
+    role = db.query(Role).filter(Role.id == user.role_id).first()
+    if not role:
+        raise HTTPException(status_code=400, detail="Роль с указанным ID не найдена")
+
+    if db.query(User).filter(User.student_card == user.student_card).first():
+        raise HTTPException(status_code=400, detail="Пользователь с таким номером студенческого билета уже существует")
+
+    db_user = User(
+        student_card=user.student_card,
+        password_hash="default_hash",
+        full_name=user.full_name,
+        contact_number=user.contact_number,
+        dormitory_id=user.dormitory_id,
+        room_id=user.room_id,
+        group_number=user.group_number,
+        specialization=user.specialization,
+        role_id=user.role_id,
+        email=user.email,
+        phone=user.phone,
+        birth_date=user.birth_date,
+        course=user.course,
+        faculty=user.faculty,
+        social_links=user.social_links
+    )
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+
+    dormitory = db.query(Dormitory).filter(Dormitory.id == db_user.dormitory_id).first() if db_user.dormitory_id else None
+    room = db.query(Room).filter(Room.id == db_user.room_id).first() if db_user.room_id else None
+    role = db.query(Role).filter(Role.id == db_user.role_id).first()
+
+    current_points = {"total": 100}
+    db_user.points = current_points
+    db.commit()
+
+    return UserResponse(
+        id=db_user.id,
+        student_card=db_user.student_card,
+        full_name=db_user.full_name,
+        contact_number=db_user.contact_number,
+        dormitory_id=db_user.dormitory_id,
+        dormitory_name=dormitory.name if dormitory else None,
+        room_id=db_user.room_id,  # Может быть None
+        room_number=room.room_number if room else None,  # Проверяем, есть ли room
+        group_number=db_user.group_number,
+        specialization=db_user.specialization,
+        role_id=db_user.role_id,
+        role_name=role.role_name if role else "Unknown",
+        email=db_user.email,
+        phone=db_user.phone,
+        birth_date=db_user.birth_date,
+        course=db_user.course,
+        faculty=db_user.faculty,
+        created_at=db_user.created_at,
+        points=current_points,
+        social_links=db_user.social_links
+    )
 
 @router.get("/users", response_model=PaginatedUserResponse)
 def get_users(
@@ -28,9 +102,8 @@ def get_users(
         room = db.query(Room).filter(Room.id == user.room_id).first() if user.room_id else None
         role = db.query(Role).filter(Role.id == user.role_id).first()
 
-        # Расчёт текущих баллов на основе нарушений
         total_penalty = db.query(UserViolation).filter(UserViolation.user_id == user.id).with_entities(func.sum(UserViolation.penalty_points)).scalar() or 0
-        current_points = {"total": max(0, 100 - total_penalty)}  # Пример: начальные 100 баллов минус штрафы
+        current_points = {"total": max(0, 100 - total_penalty)}
 
         user_responses.append(
             UserResponse(
@@ -40,8 +113,8 @@ def get_users(
                 contact_number=user.contact_number,
                 dormitory_id=user.dormitory_id,
                 dormitory_name=dormitory.name if dormitory else None,
-                room_id=user.room_id,
-                room_number=room.room_number if room else None,
+                room_id=user.room_id,  # Может быть None
+                room_number=room.room_number if room else None,  # Проверяем, есть ли room
                 group_number=user.group_number,
                 specialization=user.specialization,
                 role_id=user.role_id,
@@ -52,7 +125,8 @@ def get_users(
                 course=user.course,
                 faculty=user.faculty,
                 created_at=user.created_at,
-                points=current_points
+                points=current_points,
+                social_links=user.social_links
             )
         )
 
@@ -77,7 +151,6 @@ def update_user(
     if not db_user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
 
-    # Проверка связанных сущностей только для переданных значений
     if user_update.role_id is not None:
         role = db.query(Role).filter(Role.id == user_update.role_id).first()
         if not role:
@@ -93,7 +166,6 @@ def update_user(
         if not room:
             raise HTTPException(status_code=400, detail="Комната с указанным ID не найдена")
 
-    # Обновление только переданных полей, исключая None
     update_data = user_update.dict(exclude_unset=True, exclude_none=True)
     for key, value in update_data.items():
         setattr(db_user, key, value)
@@ -101,13 +173,11 @@ def update_user(
     db.commit()
     db.refresh(db_user)
 
-    # Расчёт текущих баллов на основе нарушений
     total_penalty = db.query(UserViolation).filter(UserViolation.user_id == db_user.id).with_entities(func.sum(UserViolation.penalty_points)).scalar() or 0
-    current_points = {"total": max(0, 100 - total_penalty)}  # Пример: начальные 100 баллов минус штрафы
-    db_user.points = current_points  # Обновляем поле points в базе
+    current_points = {"total": max(0, 100 - total_penalty)}
+    db_user.points = current_points
     db.commit()
 
-    # Получаем связанные данные для ответа
     dormitory = db.query(Dormitory).filter(Dormitory.id == db_user.dormitory_id).first() if db_user.dormitory_id else None
     room = db.query(Room).filter(Room.id == db_user.room_id).first() if db_user.room_id else None
     role = db.query(Role).filter(Role.id == db_user.role_id).first()
@@ -119,8 +189,8 @@ def update_user(
         contact_number=db_user.contact_number,
         dormitory_id=db_user.dormitory_id,
         dormitory_name=dormitory.name if dormitory else None,
-        room_id=db_user.room_id,
-        room_number=room.room_number if room else None,
+        room_id=db_user.room_id,  # Может быть None
+        room_number=room.room_number if room else None,  # Проверяем, есть ли room
         group_number=db_user.group_number,
         specialization=db_user.specialization,
         role_id=db_user.role_id,
@@ -131,7 +201,8 @@ def update_user(
         course=db_user.course,
         faculty=db_user.faculty,
         created_at=db_user.created_at,
-        points=current_points
+        points=current_points,
+        social_links=db_user.social_links
     )
 
 @router.delete("/users/{user_id}", response_model=dict)

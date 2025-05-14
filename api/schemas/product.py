@@ -1,3 +1,4 @@
+# api/schemas/product.py
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
@@ -40,6 +41,7 @@ class ProductResponse(BaseModel):
     dormitory_id: Optional[int] = None
     dormitory_name: Optional[str] = None
     rejection_reason: Optional[str] = None
+    seller_telegram: Optional[str] = None  # Добавляем Telegram-ссылку продавца
 
     class Config:
         orm_mode = True

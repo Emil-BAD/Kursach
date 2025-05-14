@@ -1,6 +1,7 @@
+# api/schemas/user.py
 from pydantic import BaseModel, Field
 from datetime import date, datetime
-from typing import Optional
+from typing import Optional, Dict, List
 
 class UserCreate(BaseModel):
     student_card: str
@@ -16,6 +17,7 @@ class UserCreate(BaseModel):
     birth_date: date
     course: int
     faculty: str
+    social_links: Optional[Dict[str, str]] = None
 
 class UserUpdate(BaseModel):
     full_name: Optional[str] = None
@@ -30,6 +32,7 @@ class UserUpdate(BaseModel):
     birth_date: Optional[date] = None
     course: Optional[int] = None
     faculty: Optional[str] = None
+    social_links: Optional[Dict[str, str]] = None
 
     class Config:
         from_attributes = True
@@ -40,17 +43,16 @@ class UserRegister(BaseModel):
     full_name: str
     contract_number: int
     role_id: int
-    dormitory_id: int = None
-    room_id: int = None
-    group_number: int = None
-    specialization: str = None
-    email: str = None
-    phone: str = None
-    birth_date: str = None
-    course: int = None
-    faculty: str = None
-
-from typing import List
+    dormitory_id: int | None = None
+    room_id: int | None = None
+    group_number: int | None = None
+    specialization: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    birth_date: str | None = None
+    course: int | None = None
+    faculty: str | None = None
+    social_links: Optional[Dict[str, str]] = None
 
 class UserResponse(BaseModel):
     id: int
@@ -58,21 +60,22 @@ class UserResponse(BaseModel):
     full_name: str
     contact_number: int
     dormitory_id: int
-    dormitory_name: str | None  # Сделали опциональным
-    room_id: int
-    room_number: int
+    dormitory_name: str | None
+    room_id: Optional[int] = None  # Делаем опциональным
+    room_number: Optional[int] = None  # Делаем опциональным
     group_number: int | None
     specialization: str | None
     role_id: int
     role_name: str
     email: str | None
     phone: str | None
-    birth_date: date | None  # Сделали опциональным
-    course: int | None  # Сделали опциональным
-    faculty: str | None  # Сделали опциональным
+    birth_date: date | None
+    course: int | None
+    faculty: str | None
     created_at: datetime
     points: dict
-    
+    social_links: Optional[Dict[str, str]] = None
+
     class Config:
         from_attributes = True
 
@@ -82,7 +85,7 @@ class PointsHistory(BaseModel):
     date: datetime
 
 class PaginatedUserResponse(BaseModel):
-    items: List[UserResponse]  # Используем List для явной типизации
+    items: List[UserResponse]
     total: int
     page: int = Field(ge=1, default=1)
     size: int = Field(ge=1, le=100, default=10)

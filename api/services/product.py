@@ -1,3 +1,4 @@
+# api/services/product.py
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
@@ -21,7 +22,6 @@ def get_products(
     skip = (page - 1) * size
     query = db.query(Product)
 
-    # Фильтрация
     if category_id:
         query = query.filter(Product.category_id == category_id)
     if dormitory_id:
@@ -29,8 +29,7 @@ def get_products(
     if status:
         query = query.filter(Product.status == status)
 
-    # Ограничение доступа: пользователи видят только свои товары со статусом "pending", остальные — только "approved"
-    if current_user.role_id not in [1, 2, 3]:  # Не администратор и не член совета
+    if current_user.role_id not in [1, 2, 3]:
         query = query.filter(
             (Product.status == "approved") | 
             ((Product.status == "pending") & (Product.seller_id == current_user.id))
@@ -44,6 +43,9 @@ def get_products(
         category = db.query(Category).filter(Category.id == product.category_id).first()
         dormitory = db.query(Dormitory).filter(Dormitory.id == product.dormitory_id).first() if product.dormitory_id else None
         seller = db.query(User).filter(User.id == product.seller_id).first()
+
+        # Извлекаем Telegram-ссылку из social_links продавца
+        seller_telegram = seller.social_links.get("telegram") if seller and seller.social_links else None
 
         product_responses.append({
             "id": product.id,
@@ -59,7 +61,8 @@ def get_products(
             "status": product.status,
             "dormitory_id": product.dormitory_id,
             "dormitory_name": dormitory.name if dormitory else None,
-            "rejection_reason": product.rejection_reason if current_user.role_id in [1, 2, 3] or product.seller_id == current_user.id else None
+            "rejection_reason": product.rejection_reason if current_user.role_id in [1, 2, 3] or product.seller_id == current_user.id else None,
+            "seller_telegram": seller_telegram  # Добавляем Telegram-ссылку
         })
 
     total_pages = (total + size - 1) // size
@@ -82,13 +85,15 @@ def get_product(
     if not product:
         raise HTTPException(status_code=404, detail="Товар не найден")
 
-    # Ограничение доступа
     if product.status == "pending" and current_user.role_id not in [1, 2, 3] and product.seller_id != current_user.id:
         raise HTTPException(status_code=403, detail="Недостаточно прав для просмотра этого товара")
 
     category = db.query(Category).filter(Category.id == product.category_id).first()
     dormitory = db.query(Dormitory).filter(Dormitory.id == product.dormitory_id).first() if product.dormitory_id else None
     seller = db.query(User).filter(User.id == product.seller_id).first()
+
+    # Извлекаем Telegram-ссылку из social_links продавца
+    seller_telegram = seller.social_links.get("telegram") if seller and seller.social_links else None
 
     return {
         "id": product.id,
@@ -104,7 +109,8 @@ def get_product(
         "status": product.status,
         "dormitory_id": product.dormitory_id,
         "dormitory_name": dormitory.name if dormitory else None,
-        "rejection_reason": product.rejection_reason if current_user.role_id in [1, 2, 3] or product.seller_id == current_user.id else None
+        "rejection_reason": product.rejection_reason if current_user.role_id in [1, 2, 3] or product.seller_id == current_user.id else None,
+        "seller_telegram": seller_telegram  # Добавляем Telegram-ссылку
     }
 
 @router.post("/products", response_model=ProductResponse)
@@ -113,22 +119,18 @@ def create_product(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # Только студенты, администраторы или члены совета могут создавать товары
-    if current_user.role_id not in [1, 2, 3, 4]:  # Administrator, CouncilPresident, CouncilMember, Student
+    if current_user.role_id not in [1, 2, 3, 4]:
         raise HTTPException(status_code=403, detail="Недостаточно прав для создания товара")
 
-    # Проверка существования категории
     category = db.query(Category).filter(Category.id == product.category_id).first()
     if not category:
         raise HTTPException(status_code=400, detail="Категория с указанным ID не найдена")
 
-    # Проверка существования общежития (если указано)
     if product.dormitory_id:
         dormitory = db.query(Dormitory).filter(Dormitory.id == product.dormitory_id).first()
         if not dormitory:
             raise HTTPException(status_code=400, detail="Общежитие с указанным ID не найдено")
 
-    # Создание нового товара
     db_product = Product(
         title=product.title,
         description=product.description,
@@ -147,6 +149,9 @@ def create_product(
     dormitory = db.query(Dormitory).filter(Dormitory.id == db_product.dormitory_id).first() if db_product.dormitory_id else None
     seller = db.query(User).filter(User.id == db_product.seller_id).first()
 
+    # Извлекаем Telegram-ссылку из social_links продавца
+    seller_telegram = seller.social_links.get("telegram") if seller and seller.social_links else None
+
     return {
         "id": db_product.id,
         "title": db_product.title,
@@ -161,7 +166,8 @@ def create_product(
         "status": db_product.status,
         "dormitory_id": db_product.dormitory_id,
         "dormitory_name": dormitory.name if dormitory else None,
-        "rejection_reason": None
+        "rejection_reason": None,
+        "seller_telegram": seller_telegram  # Добавляем Telegram-ссылку
     }
 
 @router.put("/products/{product_id}", response_model=ProductResponse)
@@ -175,30 +181,25 @@ def update_product(
     if not db_product:
         raise HTTPException(status_code=404, detail="Товар не найден")
 
-    # Проверка прав: только продавец может редактировать, если товар на модерации или отклонён
     if db_product.seller_id != current_user.id and current_user.role_id != 1:
         raise HTTPException(status_code=403, detail="Недостаточно прав для редактирования товара")
 
     if db_product.status == "approved":
         raise HTTPException(status_code=400, detail="Нельзя редактировать товар после одобрения")
 
-    # Проверка существования категории
     if product_update.category_id:
         category = db.query(Category).filter(Category.id == product_update.category_id).first()
         if not category:
             raise HTTPException(status_code=400, detail="Категория с указанным ID не найдена")
 
-    # Проверка существования общежития
     if product_update.dormitory_id:
         dormitory = db.query(Dormitory).filter(Dormitory.id == product_update.dormitory_id).first()
         if not dormitory:
             raise HTTPException(status_code=400, detail="Общежитие с указанным ID не найдено")
 
-    # Обновление полей
     for key, value in product_update.dict(exclude_unset=True).items():
         setattr(db_product, key, value)
 
-    # Сброс статуса на "pending" при редактировании
     db_product.status = "pending"
     db_product.rejection_reason = None
 
@@ -208,6 +209,9 @@ def update_product(
     category = db.query(Category).filter(Category.id == db_product.category_id).first()
     dormitory = db.query(Dormitory).filter(Dormitory.id == db_product.dormitory_id).first() if db_product.dormitory_id else None
     seller = db.query(User).filter(User.id == db_product.seller_id).first()
+
+    # Извлекаем Telegram-ссылку из social_links продавца
+    seller_telegram = seller.social_links.get("telegram") if seller and seller.social_links else None
 
     return {
         "id": db_product.id,
@@ -223,7 +227,8 @@ def update_product(
         "status": db_product.status,
         "dormitory_id": db_product.dormitory_id,
         "dormitory_name": dormitory.name if dormitory else None,
-        "rejection_reason": db_product.rejection_reason
+        "rejection_reason": db_product.rejection_reason,
+        "seller_telegram": seller_telegram  # Добавляем Telegram-ссылку
     }
 
 @router.put("/products/{product_id}/moderate", response_model=ProductResponse)
@@ -237,11 +242,9 @@ def moderate_product(
     if not db_product:
         raise HTTPException(status_code=404, detail="Товар не найден")
 
-    # Только администраторы или члены совета могут модерировать
-    if current_user.role_id not in [1, 2, 3]:  # Administrator, CouncilPresident, CouncilMember
+    if current_user.role_id not in [1, 2, 3]:
         raise HTTPException(status_code=403, detail="Недостаточно прав для модерации товара")
 
-    # Обновление статуса и причины отклонения
     db_product.status = moderation.status
     db_product.rejection_reason = moderation.rejection_reason if moderation.status == "rejected" else None
 
@@ -251,6 +254,9 @@ def moderate_product(
     category = db.query(Category).filter(Category.id == db_product.category_id).first()
     dormitory = db.query(Dormitory).filter(Dormitory.id == db_product.dormitory_id).first() if db_product.dormitory_id else None
     seller = db.query(User).filter(User.id == db_product.seller_id).first()
+
+    # Извлекаем Telegram-ссылку из social_links продавца
+    seller_telegram = seller.social_links.get("telegram") if seller and seller.social_links else None
 
     return {
         "id": db_product.id,
@@ -266,7 +272,8 @@ def moderate_product(
         "status": db_product.status,
         "dormitory_id": db_product.dormitory_id,
         "dormitory_name": dormitory.name if dormitory else None,
-        "rejection_reason": db_product.rejection_reason
+        "rejection_reason": db_product.rejection_reason,
+        "seller_telegram": seller_telegram  # Добавляем Telegram-ссылку
     }
 
 @router.delete("/products/{product_id}", response_model=dict)
@@ -279,7 +286,6 @@ def delete_product(
     if not db_product:
         raise HTTPException(status_code=404, detail="Товар не найден")
 
-    # Проверка прав: только продавец или администратор может удалить
     if db_product.seller_id != current_user.id and current_user.role_id != 1:
         raise HTTPException(status_code=403, detail="Недостаточно прав для удаления товара")
 
