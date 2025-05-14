@@ -1,3 +1,4 @@
+# api/db/models/product.py
 # -*- coding: utf-8 -*-
 from sqlalchemy import Column, Integer, String, Text, Numeric, ForeignKey, DateTime, func, JSON
 from sqlalchemy.orm import relationship
@@ -23,3 +24,4 @@ class Product(Base):
     category = relationship("Category", back_populates="products")
     dormitory = relationship("Dormitory", back_populates="products")
     moderation_logs = relationship("ProductModerationLog", back_populates="product")
+    favorited_by = relationship("FavoriteProduct", back_populates="product")  # Новое отношение

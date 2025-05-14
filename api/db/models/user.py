@@ -11,7 +11,7 @@ class User(Base):
     student_card = Column(String(30), unique=True, nullable=False)
     password_hash = Column(String(256), nullable=False)
     full_name = Column(String(100), nullable=False)
-    contract_number = Column(Integer, nullable=False)
+    contact_number = Column(Integer, nullable=False)
     dormitory_id = Column(Integer, ForeignKey("dormitories.id"))
     room_id = Column(Integer, ForeignKey("rooms.id"))
     group_number = Column(Integer)
@@ -25,6 +25,7 @@ class User(Base):
     faculty = Column(String(100))
     device_token = Column(String(500))
     created_at = Column(DateTime, nullable=False, server_default=func.current_timestamp())
+    points = Column(JSON, nullable=False, server_default='{"total": 100}')
 
     role = relationship("Role", back_populates="users")
     dormitory = relationship("Dormitory", back_populates="users")
@@ -40,3 +41,4 @@ class User(Base):
     action_logs = relationship("ActionLog", back_populates="user")
     cleanliness_history = relationship("CleanlinessHistory", back_populates="assigned_by_user")
     user_violations = relationship("UserViolation", back_populates="user")
+    favorites = relationship("FavoriteProduct", back_populates="user")

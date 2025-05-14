@@ -21,6 +21,7 @@ from api.db.models.notification import Notification
 from api.db.models.cleanliness_history import CleanlinessHistory
 from api.db.models.action_log import ActionLog
 from api.db.models.refresh_token import RefreshToken
+from api.db.models.favoriteproduct import FavoriteProduct
 
 __all__ = [
     "Base",
@@ -31,6 +32,7 @@ __all__ = [
     "Event",
     "EventRegistration",
     "CleanlinessHistory",
+    "FavoriteProduct"
     "User",
     "ViolationType",
     "UserViolation",

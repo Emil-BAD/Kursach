@@ -117,6 +117,11 @@ def create_user_violation(
     db.commit()
     db.refresh(db_violation)
 
+    # Пересчёт баллов пользователя
+    total_penalty = db.query(UserViolation).filter(UserViolation.user_id == user.id).with_entities(func.sum(UserViolation.penalty_points)).scalar() or 0
+    user.points = {"total": max(0, 100 - total_penalty)}
+    db.commit()
+
     user = db.query(User).filter(User.id == db_violation.user_id).first()
     violation_type = db.query(ViolationType).filter(ViolationType.id == db_violation.violation_type_id).first()
 
@@ -150,6 +155,12 @@ def update_user_violation(
 
     db.commit()
     db.refresh(db_violation)
+
+    # Пересчёт баллов пользователя
+    user = db.query(User).filter(User.id == db_violation.user_id).first()
+    total_penalty = db.query(UserViolation).filter(UserViolation.user_id == user.id).with_entities(func.sum(UserViolation.penalty_points)).scalar() or 0
+    user.points = {"total": max(0, 100 - total_penalty)}
+    db.commit()
 
     user = db.query(User).filter(User.id == db_violation.user_id).first()
     violation_type = db.query(ViolationType).filter(ViolationType.id == db_violation.violation_type_id).first()

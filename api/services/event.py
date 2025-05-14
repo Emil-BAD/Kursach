@@ -4,7 +4,7 @@ from typing import List
 from api.db.database import get_db
 from api.db.models import Event, User, Category, Dormitory
 from api.schemas.event import PaginatedEventResponse, EventCreate, EventUpdate
-from api.core.dependencies import get_current_admin
+from api.core.dependencies import get_current_admin, get_current_user
 
 router = APIRouter()
 
@@ -16,7 +16,7 @@ def get_events(
     dormitory_id: int = None,
     is_private: bool = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin)
+    current_user: User = Depends(get_current_user)
 ):
     skip = (page - 1) * size
     query = db.query(Event)

@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 from datetime import date, datetime
+from typing import Optional
 
 class UserCreate(BaseModel):
     student_card: str
@@ -17,18 +18,21 @@ class UserCreate(BaseModel):
     faculty: str
 
 class UserUpdate(BaseModel):
-    full_name: str
-    contact_number: int
-    dormitory_id: int
-    room_id: int
-    group_number: int | None
-    specialization: str | None
-    role_id: int
-    email: str | None
-    phone: str | None
-    birth_date: date
-    course: int
-    faculty: str
+    full_name: Optional[str] = None
+    contact_number: Optional[int] = None
+    dormitory_id: Optional[int] = None
+    room_id: Optional[int] = None
+    group_number: Optional[int] = None
+    specialization: Optional[str] = None
+    role_id: Optional[int] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    birth_date: Optional[date] = None
+    course: Optional[int] = None
+    faculty: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 
 class UserRegister(BaseModel):
     student_card: str
