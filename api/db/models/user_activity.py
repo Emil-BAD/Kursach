@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, ForeignKey, Text, TIMESTAMP
+from sqlalchemy import Column, Integer, ForeignKey, Text, TIMESTAMP, DateTime
 from sqlalchemy.orm import relationship
 from .base import Base
 
@@ -8,9 +8,8 @@ class UserActivity(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     activity_type_id = Column(Integer, ForeignKey("activity_types.id"), nullable=False)
-    description = Column(Text, nullable=False)
-    created_at = Column(TIMESTAMP, nullable=False, server_default="CURRENT_TIMESTAMP")
+    activity_date = Column(DateTime, nullable=False)
+    notes = Column(Text, nullable=True)  # Заметки об активности, а не description
 
-    # Связи
     user = relationship("User", back_populates="activities")
     activity_type = relationship("ActivityType", back_populates="user_activities")

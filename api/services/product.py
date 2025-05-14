@@ -113,123 +113,180 @@ def get_product(
         "seller_telegram": seller_telegram  # Добавляем Telegram-ссылку
     }
 
-@router.post("/products", response_model=ProductResponse)
-def create_product(
-    product: ProductCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    if current_user.role_id not in [1, 2, 3, 4]:
-        raise HTTPException(status_code=403, detail="Недостаточно прав для создания товара")
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from sqlalchemy.orm import Session
+from typing import List
+import cloudinary
+import cloudinary.uploader
+from api.db.database import get_db
+from api.db.models import Product, User, Category, Dormitory
+from api.schemas.product import ProductCreate, ProductUpdate, ProductResponse, PaginatedProductResponse, ProductModeration
+from api.core.dependencies import get_current_user, get_current_admin
 
-    category = db.query(Category).filter(Category.id == product.category_id).first()
-    if not category:
-        raise HTTPException(status_code=400, detail="Категория с указанным ID не найдена")
+router = APIRouter()
 
-    if product.dormitory_id:
-        dormitory = db.query(Dormitory).filter(Dormitory.id == product.dormitory_id).first()
-        if not dormitory:
-            raise HTTPException(status_code=400, detail="Общежитие с указанным ID не найдено")
+# Настройка Cloudinary
+cloudinary.config(
+    cloud_name="dnoyteqkn",
+    api_key="359235721338924",
+    api_secret="p-OSCOIhBEzKAkRsrH4Ksyqw1PY"
+)
 
-    db_product = Product(
-        title=product.title,
-        description=product.description,
-        price=product.price,
-        seller_id=current_user.id,
-        image_urls=product.image_urls,
-        category_id=product.category_id,
-        dormitory_id=product.dormitory_id,
-        status="pending"
-    )
-    db.add(db_product)
-    db.commit()
-    db.refresh(db_product)
+# @router.post("/products", response_model=ProductResponse)
+# def create_product(
+#     product: ProductCreate,
+#     image_files: List[UploadFile] = File(None, max_size=10 * 1024 * 1024, media_type="image/*")
+#     db: Session = Depends(get_db),
+#     current_user: User = Depends(get_current_user)
+# ):
+#     # Проверка прав
+#     if current_user.role_id not in [1, 2, 3, 4]:  # Administrator, CouncilPresident, CouncilMember, Student
+#         raise HTTPException(status_code=403, detail="Недостаточно прав для создания товара")
 
-    category = db.query(Category).filter(Category.id == db_product.category_id).first()
-    dormitory = db.query(Dormitory).filter(Dormitory.id == db_product.dormitory_id).first() if db_product.dormitory_id else None
-    seller = db.query(User).filter(User.id == db_product.seller_id).first()
+#     # Проверка существования категории
+#     category = db.query(Category).filter(Category.id == product.category_id).first()
+#     if not category:
+#         raise HTTPException(status_code=400, detail="Категория с указанным ID не найдена")
 
-    # Извлекаем Telegram-ссылку из social_links продавца
-    seller_telegram = seller.social_links.get("telegram") if seller and seller.social_links else None
+#     # Проверка существования общежития (если указано)
+#     if product.dormitory_id:
+#         dormitory = db.query(Dormitory).filter(Dormitory.id == product.dormitory_id).first()
+#         if not dormitory:
+#             raise HTTPException(status_code=400, detail="Общежитие с указанным ID не найдено")
 
-    return {
-        "id": db_product.id,
-        "title": db_product.title,
-        "description": db_product.description,
-        "price": float(db_product.price),
-        "seller_id": db_product.seller_id,
-        "seller_name": seller.full_name if seller else "Unknown",
-        "created_at": db_product.created_at,
-        "image_urls": db_product.image_urls,
-        "category_id": db_product.category_id,
-        "category_name": category.name if category else "Unknown",
-        "status": db_product.status,
-        "dormitory_id": db_product.dormitory_id,
-        "dormitory_name": dormitory.name if dormitory else None,
-        "rejection_reason": None,
-        "seller_telegram": seller_telegram  # Добавляем Telegram-ссылку
-    }
+#     # Загрузка изображений в Cloudinary
+#     image_urls = {}
+#     if image_files:
+#         for i, file in enumerate(image_files):
+#             if file and file.filename:
+#                 # Загружаем файл в Cloudinary
+#                 response = cloudinary.uploader.upload(
+#                     file.file,
+#                     folder="products",  # Папка в Cloudinary
+#                     resource_type="image"
+#                 )
+#                 image_urls[f"image_{i+1}"] = response["secure_url"]
 
-@router.put("/products/{product_id}", response_model=ProductResponse)
-def update_product(
-    product_id: int,
-    product_update: ProductUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    db_product = db.query(Product).filter(Product.id == product_id).first()
-    if not db_product:
-        raise HTTPException(status_code=404, detail="Товар не найден")
+#     # Создание нового товара
+#     db_product = Product(
+#         title=product.title,
+#         description=product.description,
+#         price=product.price,
+#         seller_id=current_user.id,
+#         image_urls=image_urls if image_urls else None,
+#         category_id=product.category_id,
+#         dormitory_id=product.dormitory_id,
+#         status="pending"
+#     )
+#     db.add(db_product)
+#     db.commit()
+#     db.refresh(db_product)
 
-    if db_product.seller_id != current_user.id and current_user.role_id != 1:
-        raise HTTPException(status_code=403, detail="Недостаточно прав для редактирования товара")
+#     # Получаем связанные данные для ответа
+#     category = db.query(Category).filter(Category.id == db_product.category_id).first()
+#     dormitory = db.query(Dormitory).filter(Dormitory.id == db_product.dormitory_id).first() if db_product.dormitory_id else None
+#     seller = db.query(User).filter(User.id == db_product.seller_id).first()
 
-    if db_product.status == "approved":
-        raise HTTPException(status_code=400, detail="Нельзя редактировать товар после одобрения")
+#     # Извлекаем Telegram-ссылку из social_links продавца
+#     seller_telegram = seller.social_links.get("telegram") if seller and seller.social_links else None
 
-    if product_update.category_id:
-        category = db.query(Category).filter(Category.id == product_update.category_id).first()
-        if not category:
-            raise HTTPException(status_code=400, detail="Категория с указанным ID не найдена")
+#     return {
+#         "id": db_product.id,
+#         "title": db_product.title,
+#         "description": db_product.description,
+#         "price": float(db_product.price),
+#         "seller_id": db_product.seller_id,
+#         "seller_name": seller.full_name if seller else "Unknown",
+#         "created_at": db_product.created_at,
+#         "image_urls": db_product.image_urls,
+#         "category_id": db_product.category_id,
+#         "category_name": category.name if category else "Unknown",
+#         "status": db_product.status,
+#         "dormitory_id": db_product.dormitory_id,
+#         "dormitory_name": dormitory.name if dormitory else None,
+#         "rejection_reason": None,
+#         "seller_telegram": seller_telegram
+#     }
 
-    if product_update.dormitory_id:
-        dormitory = db.query(Dormitory).filter(Dormitory.id == product_update.dormitory_id).first()
-        if not dormitory:
-            raise HTTPException(status_code=400, detail="Общежитие с указанным ID не найдено")
+# @router.put("/products/{product_id}", response_model=ProductResponse)
+# def update_product(
+#     product_id: int,
+#     product_update: ProductUpdate,
+#     image_files: List[UploadFile] = File(None),  # Поддержка загрузки новых файлов
+#     db: Session = Depends(get_db),
+#     current_user: User = Depends(get_current_user)
+# ):
+#     db_product = db.query(Product).filter(Product.id == product_id).first()
+#     if not db_product:
+#         raise HTTPException(status_code=404, detail="Товар не найден")
 
-    for key, value in product_update.dict(exclude_unset=True).items():
-        setattr(db_product, key, value)
+#     if db_product.seller_id != current_user.id and current_user.role_id != 1:
+#         raise HTTPException(status_code=403, detail="Недостаточно прав для редактирования товара")
 
-    db_product.status = "pending"
-    db_product.rejection_reason = None
+#     if db_product.status == "approved":
+#         raise HTTPException(status_code=400, detail="Нельзя редактировать товар после одобрения")
 
-    db.commit()
-    db.refresh(db_product)
+#     if product_update.category_id:
+#         category = db.query(Category).filter(Category.id == product_update.category_id).first()
+#         if not category:
+#             raise HTTPException(status_code=400, detail="Категория с указанным ID не найдена")
 
-    category = db.query(Category).filter(Category.id == db_product.category_id).first()
-    dormitory = db.query(Dormitory).filter(Dormitory.id == db_product.dormitory_id).first() if db_product.dormitory_id else None
-    seller = db.query(User).filter(User.id == db_product.seller_id).first()
+#     if product_update.dormitory_id:
+#         dormitory = db.query(Dormitory).filter(Dormitory.id == product_update.dormitory_id).first()
+#         if not dormitory:
+#             raise HTTPException(status_code=400, detail="Общежитие с указанным ID не найдено")
 
-    # Извлекаем Telegram-ссылку из social_links продавца
-    seller_telegram = seller.social_links.get("telegram") if seller and seller.social_links else None
+#     # Обновление изображений через Cloudinary
+#     if image_files:
+#         image_urls = {}
+#         for i, file in enumerate(image_files):
+#             if file and file.filename:
+#                 response = cloudinary.uploader.upload(
+#                     file.file,
+#                     folder="products",
+#                     resource_type="image"
+#                 )
+#                 image_urls[f"image_{i+1}"] = response["secure_url"]
+#         # Обновляем image_urls, сохраняя старые, если новые не заменяют все
+#         if db_product.image_urls:
+#             db_product.image_urls.update(image_urls)
+#         else:
+#             db_product.image_urls = image_urls
 
-    return {
-        "id": db_product.id,
-        "title": db_product.title,
-        "description": db_product.description,
-        "price": float(db_product.price),
-        "seller_id": db_product.seller_id,
-        "seller_name": seller.full_name if seller else "Unknown",
-        "created_at": db_product.created_at,
-        "image_urls": db_product.image_urls,
-        "category_id": db_product.category_id,
-        "category_name": category.name if category else "Unknown",
-        "status": db_product.status,
-        "dormitory_id": db_product.dormitory_id,
-        "dormitory_name": dormitory.name if dormitory else None,
-        "rejection_reason": db_product.rejection_reason,
-        "seller_telegram": seller_telegram  # Добавляем Telegram-ссылку
-    }
+#     # Обновление остальных полей
+#     for key, value in product_update.dict(exclude_unset=True, exclude_none=True).items():
+#         if key != "image_files":  # Изображения обрабатываются отдельно
+#             setattr(db_product, key, value)
+
+#     db_product.status = "pending"
+#     db_product.rejection_reason = None
+
+#     db.commit()
+#     db.refresh(db_product)
+
+#     category = db.query(Category).filter(Category.id == db_product.category_id).first()
+#     dormitory = db.query(Dormitory).filter(Dormitory.id == db_product.dormitory_id).first() if db_product.dormitory_id else None
+#     seller = db.query(User).filter(User.id == db_product.seller_id).first()
+
+#     seller_telegram = seller.social_links.get("telegram") if seller and seller.social_links else None
+
+#     return {
+#         "id": db_product.id,
+#         "title": db_product.title,
+#         "description": db_product.description,
+#         "price": float(db_product.price),
+#         "seller_id": db_product.seller_id,
+#         "seller_name": seller.full_name if seller else "Unknown",
+#         "created_at": db_product.created_at,
+#         "image_urls": db_product.image_urls,
+#         "category_id": db_product.category_id,
+#         "category_name": category.name if category else "Unknown",
+#         "status": db_product.status,
+#         "dormitory_id": db_product.dormitory_id,
+#         "dormitory_name": dormitory.name if dormitory else None,
+#         "rejection_reason": db_product.rejection_reason,
+#         "seller_telegram": seller_telegram
+#     }
 
 @router.put("/products/{product_id}/moderate", response_model=ProductResponse)
 def moderate_product(

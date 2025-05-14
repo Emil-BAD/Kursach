@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from api.core.dependencies import get_current_user, get_current_admin
 from api.db.database import get_db
-from api.db.models import User, Dormitory, CleanlinessHistory, Room, Role, UserViolation, ViolationType
+from api.db.models import User, Dormitory, CleanlinessHistory, Room, Role, UserViolation, ViolationType,UserActivity
 from api.services.user import router as user_router
 from api.services.news import router as news_router
 from api.services.product import router as product_router
@@ -83,6 +83,20 @@ def read_users_me(
         room_user_ids = [user.id for user in room_users]
         room_violation_frequency = db.query(UserViolation).filter(UserViolation.user_id.in_(room_user_ids)).count()
 
+    # Получаем активности пользователя
+    activities = db.query(UserActivity).filter(UserActivity.user_id == current_user.id).all()
+    activity_responses = []
+    for activity in activities:
+        activity_type = db.query(ActivityType).filter(ActivityType.id == activity.activity_type_id).first()
+        activity_responses.append({
+            "id": activity.id,
+            "activity_type_id": activity.activity_type_id,
+            "activity_type_name": activity_type.name if activity_type else "Unknown",
+            "activity_date": activity.activity_date,
+            "notes": activity.notes,  # Используем notes вместо description
+            "points_added": activity_type.points_added if activity_type else 0
+        })
+
     # Формируем ответ
     return UserResponse(
         id=current_user.id,
@@ -97,7 +111,7 @@ def read_users_me(
         specialization=current_user.specialization,
         role_id=current_user.role_id,
         role_name=role.role_name if role else "Unknown",
-        role_description=role.role_description if role else None,  # Добавляем описание роли
+        role_description=role.role_description if role else None,
         email=current_user.email,
         phone=current_user.phone,
         birth_date=current_user.birth_date,
@@ -107,7 +121,8 @@ def read_users_me(
         points=current_user.points,
         social_links=current_user.social_links,
         violations=violation_responses,
-        room_violation_frequency=room_violation_frequency
+        room_violation_frequency=room_violation_frequency,
+        activities=activity_responses
     )
 
 @app.get("/admin-only")

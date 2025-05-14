@@ -55,6 +55,17 @@ class UserRegister(BaseModel):
     faculty: str | None = None
     social_links: Optional[Dict[str, str]] = None
 
+class UserActivityResponse(BaseModel):
+    id: int
+    activity_type_id: int
+    activity_type_name: str
+    activity_date: datetime
+    notes: Optional[str] = None
+    points_added: int
+
+    class Config:
+        orm_mode = True
+
 class UserResponse(BaseModel):
     id: int
     student_card: str
@@ -68,7 +79,7 @@ class UserResponse(BaseModel):
     specialization: str | None
     role_id: int
     role_name: str
-    role_description: Optional[str] = None  # Добавляем описание роли
+    role_description: Optional[str] = None
     email: str | None
     phone: str | None
     birth_date: date | None
@@ -79,6 +90,7 @@ class UserResponse(BaseModel):
     social_links: Optional[Dict[str, str]] = None
     violations: List[UserViolationResponse] = []
     room_violation_frequency: Optional[int] = None
+    activities: List[UserActivityResponse] = []  # Добавляем поле активностей
 
     class Config:
         from_attributes = True
