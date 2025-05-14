@@ -1,10 +1,11 @@
+# main.py
 # -*- coding: utf-8 -*-
 from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
 from typing import List
 from api.core.dependencies import get_current_user, get_current_admin
 from api.db.database import get_db
-from api.db.models import User, Dormitory, CleanlinessHistory
+from api.db.models import User, Dormitory, CleanlinessHistory, Room, Role, UserViolation, ViolationType
 from api.services.user import router as user_router
 from api.services.news import router as news_router
 from api.services.product import router as product_router
@@ -17,22 +18,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.services.dormitory import router as dormitory_router
 from api.services.favorite import router as favorite_router
 from api.services.category import router as category_router
+from api.schemas.user import UserResponse
 
 app = FastAPI()
 
 origins = [
-    "http://localhost:3000",  # Разрешённый фронтенд (например, React)
-    "https://your-frontend-domain.com",  # Ваш продакшен-домен
-    "http://127.0.0.1:3000",  # Дополнительный локальный домен
-    "*"  # Разрешить все домены (для тестирования, не используйте в продакшене)
+    "http://localhost:3000",
+    "https://your-frontend-domain.com",
+    "http://127.0.0.1:3000",
+    "*"
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  # Список разрешённых источников
-    allow_credentials=True,  # Разрешить передачу куки и заголовков авторизации
-    allow_methods=["*"],  # Разрешённые HTTP-методы (GET, POST, PUT, DELETE и т.д.)
-    allow_headers=["*"],  # Разрешённые заголовки
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(user_router, tags=["users"])
@@ -47,15 +49,66 @@ app.include_router(event_registration_router, tags=["event_registration"])
 app.include_router(product_router, tags=["product"])
 app.include_router(auth_router, tags=["auth"])
 
+@app.get("/users/me", response_model=UserResponse)
+def read_users_me(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Получаем связанные данные
+    dormitory = db.query(Dormitory).filter(Dormitory.id == current_user.dormitory_id).first() if current_user.dormitory_id else None
+    room = db.query(Room).filter(Room.id == current_user.room_id).first() if current_user.room_id else None
+    role = db.query(Role).filter(Role.id == current_user.role_id).first()
 
-@app.get("/users/me")
-def read_users_me(current_user: User = Depends(get_current_user)):
-    return {
-        "user_id": current_user.id,
-        "full_name": current_user.full_name,
-        "role": current_user.role.role_name,
-        "dormitory_id": current_user.dormitory_id
-    }
+    # Получаем историю нарушений пользователя
+    violations = db.query(UserViolation).filter(UserViolation.user_id == current_user.id).all()
+    violation_responses = []
+    for violation in violations:
+        violation_type = db.query(ViolationType).filter(ViolationType.id == violation.violation_type_id).first()
+        violation_responses.append({
+            "id": violation.id,
+            "user_id": violation.user_id,
+            "user_name": current_user.full_name,
+            "violation_type_id": violation.violation_type_id,
+            "violation_type_name": violation_type.name if violation_type else "Unknown",
+            "violation_date": violation.violation_date,
+            "penalty_points": violation.penalty_points,
+            "description": violation.description,
+            "created_at": violation.created_at
+        })
+
+    # Рассчитываем частоту нарушений комнаты
+    room_violation_frequency = None
+    if current_user.room_id:
+        room_users = db.query(User).filter(User.room_id == current_user.room_id).all()
+        room_user_ids = [user.id for user in room_users]
+        room_violation_frequency = db.query(UserViolation).filter(UserViolation.user_id.in_(room_user_ids)).count()
+
+    # Формируем ответ
+    return UserResponse(
+        id=current_user.id,
+        student_card=current_user.student_card,
+        full_name=current_user.full_name,
+        contact_number=current_user.contact_number,
+        dormitory_id=current_user.dormitory_id,
+        dormitory_name=dormitory.name if dormitory else None,
+        room_id=current_user.room_id,
+        room_number=room.room_number if room else None,
+        group_number=current_user.group_number,
+        specialization=current_user.specialization,
+        role_id=current_user.role_id,
+        role_name=role.role_name if role else "Unknown",
+        role_description=role.role_description if role else None,  # Добавляем описание роли
+        email=current_user.email,
+        phone=current_user.phone,
+        birth_date=current_user.birth_date,
+        course=current_user.course,
+        faculty=current_user.faculty,
+        created_at=current_user.created_at,
+        points=current_user.points,
+        social_links=current_user.social_links,
+        violations=violation_responses,
+        room_violation_frequency=room_violation_frequency
+    )
 
 @app.get("/admin-only")
 def admin_only(current_user: User = Depends(get_current_admin)):

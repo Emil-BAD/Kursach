@@ -2,6 +2,7 @@
 from pydantic import BaseModel, Field
 from datetime import date, datetime
 from typing import Optional, Dict, List
+from api.schemas.user_violations import UserViolationResponse
 
 class UserCreate(BaseModel):
     student_card: str
@@ -61,12 +62,13 @@ class UserResponse(BaseModel):
     contact_number: int
     dormitory_id: int
     dormitory_name: str | None
-    room_id: Optional[int] = None  # Делаем опциональным
-    room_number: Optional[int] = None  # Делаем опциональным
+    room_id: Optional[int] = None
+    room_number: Optional[int] = None
     group_number: int | None
     specialization: str | None
     role_id: int
     role_name: str
+    role_description: Optional[str] = None  # Добавляем описание роли
     email: str | None
     phone: str | None
     birth_date: date | None
@@ -75,6 +77,8 @@ class UserResponse(BaseModel):
     created_at: datetime
     points: dict
     social_links: Optional[Dict[str, str]] = None
+    violations: List[UserViolationResponse] = []
+    room_violation_frequency: Optional[int] = None
 
     class Config:
         from_attributes = True
