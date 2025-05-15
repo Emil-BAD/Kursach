@@ -61,20 +61,20 @@ def read_users_me(
 
     # Получаем историю нарушений пользователя
     violations = db.query(UserViolation).filter(UserViolation.user_id == current_user.id).all()
-    violation_responses = []
-    for violation in violations:
-        violation_type = db.query(ViolationType).filter(ViolationType.id == violation.violation_type_id).first()
-        violation_responses.append({
+    violation_responses = [
+        {
             "id": violation.id,
             "user_id": violation.user_id,
             "user_name": current_user.full_name,
             "violation_type_id": violation.violation_type_id,
-            "violation_type_name": violation_type.name if violation_type else "Unknown",
+            "violation_type_name": db.query(ViolationType).filter(ViolationType.id == violation.violation_type_id).first().name if db.query(ViolationType).filter(ViolationType.id == violation.violation_type_id).first() else "Unknown",
             "violation_date": violation.violation_date,
             "penalty_points": violation.penalty_points,
             "description": violation.description,
             "created_at": violation.created_at
-        })
+        }
+        for violation in violations
+    ]
 
     # Рассчитываем частоту нарушений комнаты
     room_violation_frequency = None
@@ -83,19 +83,25 @@ def read_users_me(
         room_user_ids = [user.id for user in room_users]
         room_violation_frequency = db.query(UserViolation).filter(UserViolation.user_id.in_(room_user_ids)).count()
 
-    # Получаем активности пользователя
-    activities = db.query(UserActivity).filter(UserActivity.user_id == current_user.id).all()
-    activity_responses = []
-    for activity in activities:
-        activity_type = db.query(ActivityType).filter(ActivityType.id == activity.activity_type_id).first()
-        activity_responses.append({
+    # Получаем активности пользователя с оптимизацией через join
+    activities = (
+        db.query(UserActivity)
+        .join(ActivityType, UserActivity.activity_type_id == ActivityType.id)
+        .filter(UserActivity.user_id == current_user.id)
+        .all()
+    )
+    activity_responses = [
+        {
             "id": activity.id,
             "activity_type_id": activity.activity_type_id,
-            "activity_type_name": activity_type.name if activity_type else "Unknown",
+            "activity_type_name": activity.activity_type.activity_name if activity.activity_type else "Unknown",
             "activity_date": activity.activity_date,
-            "notes": activity.notes,  # Используем notes вместо description
-            "points_added": activity_type.points_added if activity_type else 0
-        })
+            "earned_points": activity.earned_points,  # Добавляем earned_points
+            "description": activity.description,
+            "notes": activity.notes  # Оставляем оба поля
+        }
+        for activity in activities
+    ]
 
     # Формируем ответ
     return UserResponse(

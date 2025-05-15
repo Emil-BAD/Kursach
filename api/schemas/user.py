@@ -67,34 +67,60 @@ class UserActivityResponse(BaseModel):
     class Config:
         orm_mode = True
 
+class ActivityResponse(BaseModel):
+    id: int
+    activity_type_id: int
+    activity_type_name: str
+    activity_date: datetime
+    earned_points: int
+    description: Optional[str] = None
+    notes: Optional[str] = None
+
+    class Config:
+        orm_mode = True
+
+class ViolationResponse(BaseModel):
+    id: int
+    user_id: int
+    user_name: str
+    violation_type_id: int
+    violation_type_name: str
+    violation_date: datetime
+    penalty_points: int
+    description: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        orm_mode = True
+
 class UserResponse(BaseModel):
     id: int
     student_card: str
     full_name: str
-    contact_number: int
-    dormitory_id: int
-    dormitory_name: str | None
+    contact_number: int  # Изменили с str на int
+    dormitory_id: Optional[int] = None
+    dormitory_name: Optional[str] = None
     room_id: Optional[int] = None
-    room_number: Optional[int] = None
-    group_number: int | None
-    specialization: str | None
+    room_number: Optional[int] = None  # Изменили с str на int
+    group_number: Optional[int] = None  # Изменили с str на int
+    specialization: Optional[str] = None
     role_id: int
     role_name: str
     role_description: Optional[str] = None
-    email: str | None
-    phone: str | None
-    birth_date: date | None
-    course: int | None
-    faculty: str | None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    birth_date: Optional[datetime] = None
+    course: Optional[int] = None  # Изменили с str на int
+    faculty: Optional[str] = None
     created_at: datetime
-    points: dict
-    social_links: Optional[Dict[str, str]] = None
-    violations: Optional[List[UserViolationResponse]] = []
+    points: dict  # Оставляем int, но нужно исправить передачу данных
+    social_links: Optional[dict] = None
+    violations: List[ViolationResponse] = []
     room_violation_frequency: Optional[int] = None
-    activities: Optional[List[UserActivityResponse]] = []  # Добавляем поле активностей
+    activities: List[ActivityResponse] = []
 
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 class PointsHistory(BaseModel):
     change: int
