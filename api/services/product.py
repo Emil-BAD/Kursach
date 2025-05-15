@@ -199,8 +199,12 @@ def create_product(
 @router.put("/products/{product_id}", response_model=ProductResponse)
 def update_product(
     product_id: int,
-    product_update: ProductUpdate,
-    image_files: List[UploadFile] = File(None),  # Поддержка загрузки новых файлов
+    title: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    price: Optional[float] = Form(None),
+    category_id: Optional[int] = Form(None),
+    dormitory_id: Optional[int] = Form(None),
+    image_files: List[UploadFile] = File(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -214,37 +218,46 @@ def update_product(
     if db_product.status == "approved":
         raise HTTPException(status_code=400, detail="Нельзя редактировать товар после одобрения")
 
-    if product_update.category_id:
-        category = db.query(Category).filter(Category.id == product_update.category_id).first()
+    # Проверка существования категории
+    if category_id is not None:
+        category = db.query(Category).filter(Category.id == category_id).first()
         if not category:
             raise HTTPException(status_code=400, detail="Категория с указанным ID не найдена")
 
-    if product_update.dormitory_id:
-        dormitory = db.query(Dormitory).filter(Dormitory.id == product_update.dormitory_id).first()
+    # Проверка существования общежития
+    if dormitory_id is not None:
+        dormitory = db.query(Dormitory).filter(Dormitory.id == dormitory_id).first()
         if not dormitory:
             raise HTTPException(status_code=400, detail="Общежитие с указанным ID не найдено")
 
     # Обновление изображений через Cloudinary
     if image_files:
-        image_urls = {}
-        for i, file in enumerate(image_files):
+        image_urls = db_product.image_urls or {}
+        for i, file in enumerate(image_files, len(image_urls) + 1):
             if file and file.filename:
-                response = cloudinary.uploader.upload(
-                    file.file,
-                    folder="products",
-                    resource_type="image"
-                )
-                image_urls[f"image_{i+1}"] = response["secure_url"]
-        # Обновляем image_urls, сохраняя старые, если новые не заменяют все
-        if db_product.image_urls:
-            db_product.image_urls.update(image_urls)
-        else:
-            db_product.image_urls = image_urls
+                try:
+                    response = cloudinary.uploader.upload(
+                        file.file,
+                        folder="products",
+                        resource_type="image",
+                        public_id=f"product_{product_id}_image_{i}"
+                    )
+                    image_urls[f"image_{i}"] = response["secure_url"]
+                except Exception as e:
+                    raise HTTPException(status_code=500, detail=f"Ошибка загрузки изображения: {str(e)}")
+        db_product.image_urls = image_urls
 
     # Обновление остальных полей
-    for key, value in product_update.dict(exclude_unset=True, exclude_none=True).items():
-        if key != "image_files":  # Изображения обрабатываются отдельно
-            setattr(db_product, key, value)
+    if title is not None:
+        db_product.title = title
+    if description is not None:
+        db_product.description = description
+    if price is not None:
+        db_product.price = price
+    if category_id is not None:
+        db_product.category_id = category_id
+    if dormitory_id is not None:
+        db_product.dormitory_id = dormitory_id
 
     db_product.status = "pending"
     db_product.rejection_reason = None
@@ -252,6 +265,7 @@ def update_product(
     db.commit()
     db.refresh(db_product)
 
+    # Получение связанных данных
     category = db.query(Category).filter(Category.id == db_product.category_id).first()
     dormitory = db.query(Dormitory).filter(Dormitory.id == db_product.dormitory_id).first() if db_product.dormitory_id else None
     seller = db.query(User).filter(User.id == db_product.seller_id).first()
