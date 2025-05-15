@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from api.core.dependencies import get_current_user, get_current_admin
 from api.db.database import get_db
-from api.db.models import User, Dormitory, CleanlinessHistory, Room, Role, UserViolation, ViolationType,UserActivity
+from api.db.models import User, Dormitory, CleanlinessHistory, Room, Role, UserViolation, ViolationType, UserActivity, ActivityType
 from api.services.user import router as user_router
 from api.services.news import router as news_router
 from api.services.product import router as product_router
