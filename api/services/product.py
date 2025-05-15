@@ -56,6 +56,7 @@ def get_products(
 
         # Извлекаем Telegram-ссылку из social_links продавца
         seller_telegram = seller.social_links.get("telegram") if seller and seller.social_links else None
+        seller_vk = seller.social_links.get("vk") if seller and seller.social_links else None
 
         product_responses.append({
             "id": product.id,
@@ -72,7 +73,9 @@ def get_products(
             "dormitory_id": product.dormitory_id,
             "dormitory_name": dormitory.name if dormitory else None,
             "rejection_reason": product.rejection_reason if current_user.role_id in [1, 2, 3] or product.seller_id == current_user.id else None,
-            "seller_telegram": seller_telegram  # Добавляем Telegram-ссылку
+            "seller_telegram": seller_telegram,
+            "seller_vk": seller_vk
+            # Добавляем Telegram-ссылку
         })
 
     total_pages = (total + size - 1) // size
@@ -104,6 +107,8 @@ def get_product(
 
     # Извлекаем Telegram-ссылку из social_links продавца
     seller_telegram = seller.social_links.get("telegram") if seller and seller.social_links else None
+    seller_vk = seller.social_links.get("vk") if seller and seller.social_links else None
+
 
     return {
         "id": product.id,
@@ -120,7 +125,9 @@ def get_product(
         "dormitory_id": product.dormitory_id,
         "dormitory_name": dormitory.name if dormitory else None,
         "rejection_reason": product.rejection_reason if current_user.role_id in [1, 2, 3] or product.seller_id == current_user.id else None,
-        "seller_telegram": seller_telegram  # Добавляем Telegram-ссылку
+        "seller_telegram": seller_telegram,
+        "seller_vk": seller_vk
+        # Добавляем Telegram-ссылку
     }
 
 @router.post("/products", response_model=ProductResponse)
@@ -193,7 +200,8 @@ def create_product(
         "dormitory_id": db_product.dormitory_id,
         "dormitory_name": dormitory_name,
         "rejection_reason": None,
-        "seller_telegram": current_user.social_links.get("telegram") if current_user.social_links else None
+        "seller_telegram": current_user.social_links.get("telegram") if current_user.social_links else None,
+        "seller_vk": current_user.social_links.get("vk") if current_user.social_links else None
     }
 
 @router.put("/products/{product_id}", response_model=ProductResponse)
@@ -326,7 +334,7 @@ def update_product(
     seller = db.query(User).filter(User.id == db_product.seller_id).first()
 
     seller_telegram = seller.social_links.get("telegram") if seller and seller.social_links else None
-
+    seller_vk = seller.social_links.get("vk") if seller and seller.social_links else None
     return {
         "id": db_product.id,
         "title": db_product.title,
@@ -342,7 +350,8 @@ def update_product(
         "dormitory_id": db_product.dormitory_id,
         "dormitory_name": dormitory.name if dormitory else None,
         "rejection_reason": db_product.rejection_reason,
-        "seller_telegram": seller_telegram
+        "seller_telegram": seller_telegram,
+        "seller_vk": seller_vk
     }
 
 @router.put("/products/{product_id}", response_model=ProductResponse)
@@ -475,6 +484,7 @@ def update_product(
     seller = db.query(User).filter(User.id == db_product.seller_id).first()
 
     seller_telegram = seller.social_links.get("telegram") if seller and seller.social_links else None
+    seller_vk = seller.social_links.get("vk") if seller and seller.social_links else None
 
     return {
         "id": db_product.id,
@@ -491,7 +501,8 @@ def update_product(
         "dormitory_id": db_product.dormitory_id,
         "dormitory_name": dormitory.name if dormitory else None,
         "rejection_reason": db_product.rejection_reason,
-        "seller_telegram": seller_telegram
+        "seller_telegram": seller_telegram,
+        "seller_vk": seller_vk
     }
 
 @router.put("/products/{product_id}/moderate", response_model=ProductResponse)
@@ -520,6 +531,7 @@ def moderate_product(
 
     # Извлекаем Telegram-ссылку из social_links продавца
     seller_telegram = seller.social_links.get("telegram") if seller and seller.social_links else None
+    seller_vk = seller.social_links.get("vk") if seller and seller.social_links else None
 
     return {
         "id": db_product.id,
@@ -536,7 +548,8 @@ def moderate_product(
         "dormitory_id": db_product.dormitory_id,
         "dormitory_name": dormitory.name if dormitory else None,
         "rejection_reason": db_product.rejection_reason,
-        "seller_telegram": seller_telegram  # Добавляем Telegram-ссылку
+        "seller_telegram": seller_telegram,
+        "seller_vk": seller_vk# Добавляем Telegram-ссылку
     }
 
 @router.delete("/products/{product_id}", response_model=dict)

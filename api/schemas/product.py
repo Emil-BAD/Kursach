@@ -43,6 +43,7 @@ class ProductResponse(BaseModel):
     dormitory_name: Optional[str] = None
     rejection_reason: Optional[str] = None
     seller_telegram: Optional[str] = None
+    seller_vk: Optional[str] = None
 
     class Config:
         orm_mode = True
