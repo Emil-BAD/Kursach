@@ -7,8 +7,15 @@ from api.db.models import Event, User, Category, Dormitory
 from api.schemas.event import PaginatedEventResponse, EventResponse
 from api.core.dependencies import get_current_admin, get_current_user
 import cloudinary.uploader
+import cloudinary
 
 router = APIRouter()
+
+cloudinary.config(
+    cloud_name="dnoyteqkn",
+    api_key="359235721338924",
+    api_secret="p-OSCOIhBEzKAkRsrH4Ksyqw1PY"
+)
 
 @router.get("/events", response_model=PaginatedEventResponse)
 def get_events(

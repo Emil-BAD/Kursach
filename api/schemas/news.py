@@ -2,25 +2,27 @@ from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
 
+# Базовая схема без image_urls
 class NewsBase(BaseModel):
     title: str
     content: str
-    image_url: Optional[str] = None
     category_id: int
     dormitory_id: Optional[int] = None
     is_private: Optional[bool] = False
 
+# Схема для создания (без image_urls, так как изображения будут загружаться отдельно)
 class NewsCreate(NewsBase):
     pass
 
-class NewsUpdate(NewsBase):
+# Схема для обновления (без image_urls, так как изображения будут загружаться отдельно)
+class NewsUpdate(BaseModel):
     title: Optional[str] = None
     content: Optional[str] = None
-    image_url: Optional[str] = None
     category_id: Optional[int] = None
     dormitory_id: Optional[int] = None
     is_private: Optional[bool] = None
 
+# Схема ответа (с image_urls, так как они возвращаются из базы)
 class NewsResponse(BaseModel):
     id: int
     title: str
@@ -28,7 +30,7 @@ class NewsResponse(BaseModel):
     created_at: datetime
     author_id: int
     author_name: str
-    image_url: Optional[str] = None
+    image_urls: Optional[List[str]] = None
     category_id: int
     category_name: str
     dormitory_id: Optional[int] = None
