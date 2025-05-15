@@ -8,20 +8,10 @@ from api.db.database import get_db
 from api.db.models import User, Dormitory, Room, Role, UserViolation
 from api.schemas.user import PaginatedUserResponse, UserResponse, UserCreate, UserUpdate
 from api.core.dependencies import get_current_admin
+import hashlib
 
 router = APIRouter()
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from typing import List
-from sqlalchemy.sql import func
-from api.db.database import get_db
-from api.db.models import User, Dormitory, Room, Role, UserViolation
-from api.schemas.user import PaginatedUserResponse, UserResponse, UserCreate, UserUpdate
-from api.core.dependencies import get_current_admin
-import hashlib  # Для простого хеширования (замени на реальный метод, если есть)
-
-router = APIRouter()
 
 @router.post("/users", response_model=UserResponse)
 def create_user(

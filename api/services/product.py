@@ -135,7 +135,7 @@ def create_product(
     current_user: User = Depends(get_current_user)
 ):
     # Проверка прав
-    if current_user.role_id not in [1, 2, 3, 4]:
+    if current_user.role_id not in [1, 2, 3, 4, 10]:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
     # Проверка категории
@@ -201,9 +201,10 @@ def update_product(
     product_id: int,
     title: Optional[str] = Form(None),
     description: Optional[str] = Form(None),
-    price: Optional[float] = Form(None),
-    category_id: Optional[int] = Form(None),
-    dormitory_id: Optional[int] = Form(None),
+    price: Optional[str] = Form(None),
+    category_id: Optional[str] = Form(None),
+    dormitory_id: Optional[str] = Form(None),
+    status: Optional[str] = Form(None),
     image_files: List[UploadFile] = File(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -212,11 +213,38 @@ def update_product(
     if not db_product:
         raise HTTPException(status_code=404, detail="Товар не найден")
 
+    # Проверка прав: только продавец или администратор может редактировать
     if db_product.seller_id != current_user.id and current_user.role_id != 1:
         raise HTTPException(status_code=403, detail="Недостаточно прав для редактирования товара")
 
-    if db_product.status == "approved":
+    # Проверка: нельзя редактировать товар после одобрения (кроме админов)
+    if db_product.status == "approved" and current_user.role_id != 1:
         raise HTTPException(status_code=400, detail="Нельзя редактировать товар после одобрения")
+
+    # Преобразование пустых строк в None и валидация числовых полей
+    if price == "":
+        price = None
+    else:
+        try:
+            price = float(price) if price else None
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Поле price должно быть числом")
+
+    if category_id == "":
+        category_id = None
+    else:
+        try:
+            category_id = int(category_id) if category_id else None
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Поле category_id должно быть целым числом")
+
+    if dormitory_id == "":
+        dormitory_id = None
+    else:
+        try:
+            dormitory_id = int(dormitory_id) if dormitory_id else None
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Поле dormitory_id должно быть целым числом")
 
     # Проверка существования категории
     if category_id is not None:
@@ -231,7 +259,7 @@ def update_product(
             raise HTTPException(status_code=400, detail="Общежитие с указанным ID не найдено")
 
     # Обновление изображений через Cloudinary
-    if image_files:
+    if image_files and any(file.filename for file in image_files):
         image_urls = db_product.image_urls or {}
         for i, file in enumerate(image_files, len(image_urls) + 1):
             if file and file.filename:
@@ -247,10 +275,10 @@ def update_product(
                     raise HTTPException(status_code=500, detail=f"Ошибка загрузки изображения: {str(e)}")
         db_product.image_urls = image_urls
 
-    # Обновление остальных полей
-    if title is not None:
+    # Обновление полей только если переданы непустые значения
+    if title is not None and title.strip() != "":
         db_product.title = title
-    if description is not None:
+    if description is not None and description.strip() != "":
         db_product.description = description
     if price is not None:
         db_product.price = price
@@ -259,8 +287,32 @@ def update_product(
     if dormitory_id is not None:
         db_product.dormitory_id = dormitory_id
 
-    db_product.status = "pending"
-    db_product.rejection_reason = None
+    # Обновление статуса
+    if status is not None and status.strip() != "":
+        allowed_statuses = ["pending", "approved", "rejected"]
+        if status not in allowed_statuses:
+            raise HTTPException(status_code=400, detail=f"Недопустимый статус. Допустимые значения: {allowed_statuses}")
+        
+        if status in ["approved", "rejected"] and current_user.role_id != 1:
+            raise HTTPException(status_code=403, detail="Только администратор может устанавливать статус 'approved' или 'rejected'")
+        
+        db_product.status = status
+        
+        if status != "rejected":
+            db_product.rejection_reason = None
+
+    # Если статус не передан, устанавливаем "pending" при любом изменении (кроме админов)
+    elif any([
+        (title is not None and title.strip() != ""),
+        (description is not None and description.strip() != ""),
+        price is not None,
+        category_id is not None,
+        dormitory_id is not None,
+        image_files and any(file.filename for file in image_files)
+    ]):
+        if current_user.role_id != 1:
+            db_product.status = "pending"
+            db_product.rejection_reason = None
 
     db.commit()
     db.refresh(db_product)

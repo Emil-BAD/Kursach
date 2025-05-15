@@ -89,9 +89,9 @@ class UserResponse(BaseModel):
     created_at: datetime
     points: dict
     social_links: Optional[Dict[str, str]] = None
-    violations: List[UserViolationResponse] = []
+    violations: Optional[List[UserViolationResponse]] = []
     room_violation_frequency: Optional[int] = None
-    activities: List[UserActivityResponse] = []  # Добавляем поле активностей
+    activities: Optional[List[UserActivityResponse]] = []  # Добавляем поле активностей
 
     class Config:
         from_attributes = True

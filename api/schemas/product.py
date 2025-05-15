@@ -21,6 +21,7 @@ class ProductUpdate(ProductBase):
     image_files: Optional[List[UploadFile]] = None  # Для обновления можно загружать новые файлы
     category_id: Optional[int] = None
     dormitory_id: Optional[int] = None
+    status: Optional[str] = None
 
 class ProductModeration(BaseModel):
     status: str  # "pending", "approved", "rejected"
