@@ -6,6 +6,7 @@ from api.schemas.user_violations import UserViolationResponse
 
 class UserCreate(BaseModel):
     student_card: str
+    password_hash: str
     full_name: str
     contact_number: int
     dormitory_id: int

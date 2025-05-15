@@ -125,7 +125,7 @@ def register(user_data: UserRegister, db: Session = Depends(get_db)):
     # Создаём нового пользователя
     new_user = User(
         student_card=user_data.student_card,
-        password=hashed_password,
+        password=user_data.password_hash,
         full_name=user_data.full_name,
         contact_number=user_data.contract_number,
         dormitory_id=user_data.dormitory_id,
