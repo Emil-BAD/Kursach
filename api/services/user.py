@@ -1,4 +1,3 @@
-# api/services/user.py
 from fastapi import APIRouter, Depends, HTTPException, Form
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict
@@ -110,6 +109,7 @@ def create_user(
         activities=[]  # Пустой список при создании
     )
 
+
 @router.get("/users", response_model=PaginatedUserResponse)
 def get_users(
     page: int = 1,
@@ -165,7 +165,8 @@ def get_users(
         total_pages=total_pages
     )
 
-@router.put("/{user_id}", response_model=UserResponse)
+
+@router.put("/users/{user_id}", response_model=UserResponse)
 def update_user(
     user_id: int,
     full_name: Optional[str] = Form(None),
@@ -276,3 +277,21 @@ def update_user(
         room_violation_frequency=0,
         activities=[]
     )
+
+
+@router.delete("/users/{user_id}", response_model=dict)
+def delete_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
+):
+    # Поиск пользователя
+    db_user = db.query(User).filter(User.id == user_id).first()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    # Удаление пользователя (связанные записи удалятся автоматически)
+    db.delete(db_user)
+    db.commit()
+
+    return {"message": f"Пользователь с ID {user_id} успешно удалён"}

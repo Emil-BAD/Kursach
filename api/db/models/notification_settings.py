@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 from .base import Base
 
@@ -7,11 +7,6 @@ class NotificationSettings(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True)
-    news_notifications = Column(Boolean, nullable=False, server_default="TRUE")
-    event_notifications = Column(Boolean, nullable=False, server_default="TRUE")
-    product_notifications = Column(Boolean, nullable=False, server_default="TRUE")
-    cleanliness_notifications = Column(Boolean, nullable=False, server_default="TRUE")
-    violation_notifications = Column(Boolean, nullable=False, server_default="TRUE")
+    preferences = Column(JSON, nullable=False)
 
-    # Связи
-    user = relationship("User", uselist=False)
+    user = relationship("User", back_populates="notification_settings")
