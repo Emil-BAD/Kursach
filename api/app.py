@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.services.dormitory import router as dormitory_router
 from api.services.favorite import router as favorite_router
 from api.services.category import router as category_router
+from api.services.activities import router as activities_router
 from api.schemas.user import UserResponse
 
 app = FastAPI()
@@ -38,6 +39,7 @@ app.add_middleware(
 )
 
 app.include_router(user_router, tags=["users"])
+app.include_router(activities_router, tags=["activities"])
 app.include_router(category_router, tags=["categories"])
 app.include_router(favorite_router, tags=["favorite"])
 app.include_router(dormitory_router, tags=["dormitory"])
