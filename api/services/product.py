@@ -135,7 +135,7 @@ def create_product(
     current_user: User = Depends(get_current_user)
 ):
     # Проверка прав
-    if current_user.role_id not in [1, 2, 3, 4, 10]:
+    if current_user.role_id:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
     # Проверка категории
@@ -214,11 +214,11 @@ def update_product(
         raise HTTPException(status_code=404, detail="Товар не найден")
 
     # Проверка прав: только продавец или администратор может редактировать
-    if db_product.seller_id != current_user.id and current_user.role_id != 1:
+    if db_product.seller_id != current_user.id and current_user.role_id != 2:
         raise HTTPException(status_code=403, detail="Недостаточно прав для редактирования товара")
 
     # Проверка: нельзя редактировать товар после одобрения (кроме админов)
-    if db_product.status == "approved" and current_user.role_id != 1:
+    if db_product.status == "approved" and current_user.role_id != 2:
         raise HTTPException(status_code=400, detail="Нельзя редактировать товар после одобрения")
 
     # Преобразование пустых строк в None и валидация числовых полей
