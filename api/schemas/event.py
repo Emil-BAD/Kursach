@@ -1,6 +1,5 @@
-# api/schemas/event.py
 from pydantic import BaseModel
-from typing import List, Optional, Dict
+from typing import List, Optional
 from datetime import datetime
 
 class EventBase(BaseModel):
@@ -15,9 +14,9 @@ class EventBase(BaseModel):
     requirements: Optional[str] = None
 
 class EventCreate(EventBase):
-    pass  # Убрали image_urls, так как будет использоваться image_files
+    pass  # Для создания события
 
-class EventUpdate(EventBase):
+class EventUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     event_date: Optional[datetime] = None
@@ -26,7 +25,7 @@ class EventUpdate(EventBase):
     dormitory_id: Optional[int] = None
     status: Optional[str] = None
     is_private: Optional[bool] = None
-    requirements: Optional[str] = None  # Убрали image_urls
+    requirements: Optional[str] = None
 
 class EventResponse(BaseModel):
     id: int
@@ -37,7 +36,6 @@ class EventResponse(BaseModel):
     created_at: datetime
     organizer_id: int
     organizer_name: str
-    image_urls: Optional[Dict[str, str]] = None  # Оставляем как словарь для ответа
     category_id: int
     category_name: str
     status: str
