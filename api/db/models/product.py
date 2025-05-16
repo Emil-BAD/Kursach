@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 from sqlalchemy import Column, Integer, String, Text, Numeric, ForeignKey, DateTime, func, JSON
 from sqlalchemy.orm import relationship
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.sql import text
 from api.db.models.base import Base
 
 class Product(Base):
@@ -14,7 +16,7 @@ class Product(Base):
     price = Column(Numeric(10, 2), nullable=False)
     seller_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, nullable=False, server_default=func.current_timestamp())
-    image_urls = Column(JSON)
+    image_urls = Column(JSONB, nullable=True, server_default=text("'[]'::jsonb"))
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=False)
     dormitory_id = Column(Integer, ForeignKey("dormitories.id"))
     status = Column(String(20), nullable=False, server_default="pending")
