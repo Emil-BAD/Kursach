@@ -8,6 +8,7 @@ from api.db.models import User, Dormitory, Room, Role, UserViolation
 from api.schemas.user import PaginatedUserResponse, UserResponse, UserCreate, UserUpdate
 from api.core.dependencies import get_current_admin
 import hashlib
+import json
 
 router = APIRouter()
 
@@ -178,10 +179,10 @@ def update_user(
     role_id: Optional[int] = Form(None),
     email: Optional[str] = Form(None),
     phone: Optional[str] = Form(None),
-    birth_date: Optional[str] = Form(None),  # Принимаем как строку, конвертируем в date
+    birth_date: Optional[str] = Form(None),
     course: Optional[int] = Form(None),
     faculty: Optional[str] = Form(None),
-    social_links: Optional[Dict[str, str]] = Form(None),
+    social_links: Optional[str] = Form(None),  # Изменено на строку
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_admin)
 ):
@@ -236,7 +237,13 @@ def update_user(
     if faculty is not None:
         db_user.faculty = faculty
     if social_links is not None:
-        db_user.social_links = social_links
+        try:
+            social_links_dict = json.loads(social_links)  # Парсим JSON-строку
+            if not isinstance(social_links_dict, dict):
+                raise ValueError("social_links должен быть словарем")
+            db_user.social_links = social_links_dict
+        except (json.JSONDecodeError, ValueError):
+            raise HTTPException(status_code=400, detail="Неверный формат social_links. Ожидается JSON-объект, например: {\"telegram\": \"@username\"}")
 
     db.commit()
     db.refresh(db_user)
