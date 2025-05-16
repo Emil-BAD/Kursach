@@ -182,7 +182,8 @@ def update_user(
     birth_date: Optional[str] = Form(None),
     course: Optional[int] = Form(None),
     faculty: Optional[str] = Form(None),
-    social_links: Optional[str] = Form(None),  # Изменено на строку
+    social_links_tg: Optional[str] = Form(None, alias="social_links[tg]"),  # Псевдоним для social_links[tg]
+    social_links_vk: Optional[str] = Form(None, alias="social_links[vk]"),  # Псевдоним для social_links[vk]
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_admin)
 ):
@@ -236,25 +237,26 @@ def update_user(
         db_user.course = course
     if faculty is not None:
         db_user.faculty = faculty
-    if social_links is not None:
-        try:
-            social_links_dict = json.loads(social_links)  # Парсим JSON-строку
-            if not isinstance(social_links_dict, dict):
-                raise ValueError("social_links должен быть словарем")
-            db_user.social_links = social_links_dict
-        except (json.JSONDecodeError, ValueError):
-            raise HTTPException(status_code=400, detail="Неверный формат social_links. Ожидается JSON-объект, например: {\"telegram\": \"@username\"}")
+
+    # Собираем social_links из отдельных полей
+    social_links_dict = {}
+    if social_links_tg is not None:
+        social_links_dict["tg"] = social_links_tg
+    if social_links_vk is not None:
+        social_links_dict["vk"] = social_links_vk
+    if social_links_dict:
+        db_user.social_links = social_links_dict
 
     db.commit()
     db.refresh(db_user)
 
-    # Пересчёт баллов на основе нарушений
+    # Пересчёт баллов
     total_penalty = db.query(UserViolation).filter(UserViolation.user_id == db_user.id).with_entities(func.sum(UserViolation.penalty_points)).scalar() or 0
     current_points = {"total": max(0, 100 - total_penalty)}
     db_user.points = current_points
     db.commit()
 
-    # Получение связанных данных
+    # Формирование ответа
     dormitory = db.query(Dormitory).filter(Dormitory.id == db_user.dormitory_id).first() if db_user.dormitory_id else None
     room = db.query(Room).filter(Room.id == db_user.room_id).first() if db_user.room_id else None
     role = db.query(Role).filter(Role.id == db_user.role_id).first()
