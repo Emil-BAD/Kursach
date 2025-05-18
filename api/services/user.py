@@ -238,14 +238,22 @@ def update_user(
     if faculty is not None:
         db_user.faculty = faculty
 
-    # Собираем social_links из отдельных полей
-    social_links_dict = {}
+    # Обновление social_links
+    social_links_dict = db_user.social_links or {}
     if social_links_tg is not None:
         social_links_dict["tg"] = social_links_tg
     if social_links_vk is not None:
         social_links_dict["vk"] = social_links_vk
-    if social_links_dict:
+    if social_links_tg is not None or social_links_vk is not None:
         db_user.social_links = social_links_dict
+
+    # Обновление всех товаров пользователя
+    if social_links_tg is not None or social_links_vk is not None:
+        products = db.query(Product).filter(Product.seller_id == user_id).all()
+        for product in products:
+            product.seller_telegram = social_links_dict.get("tg")
+            product.seller_vk = social_links_dict.get("vk")
+        db.commit()
 
     db.commit()
     db.refresh(db_user)

@@ -30,15 +30,15 @@ class ProductResponse(BaseModel):
     seller_id: int
     seller_name: str
     created_at: datetime
-    image_urls: Optional[List[str]] = None  # Изменено на список
+    image_urls: Optional[List[str]] = None
     category_id: int
     category_name: str
     status: str
     dormitory_id: Optional[int] = None
     dormitory_name: Optional[str] = None
     rejection_reason: Optional[str] = None
-    seller_telegram: Optional[str] = None
-    seller_vk: Optional[str] = None
+    seller_telegram: Optional[str] = None  # Уже присутствует
+    seller_vk: Optional[str] = None        # Уже присутствует
 
     class Config:
         orm_mode = True

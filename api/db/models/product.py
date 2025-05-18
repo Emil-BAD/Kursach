@@ -21,9 +21,11 @@ class Product(Base):
     dormitory_id = Column(Integer, ForeignKey("dormitories.id"))
     status = Column(String(20), nullable=False, server_default="pending")
     rejection_reason = Column(Text)
+    seller_telegram = Column(String(255), nullable=True)  # Новое поле для Telegram
+    seller_vk = Column(String(255), nullable=True)       # Новое поле для VK
 
     seller = relationship("User", back_populates="products_sold")
     category = relationship("Category", back_populates="products")
     dormitory = relationship("Dormitory", back_populates="products")
     moderation_logs = relationship("ProductModerationLog", back_populates="product")
-    favorited_by = relationship("FavoriteProduct", back_populates="product")  # Новое отношение
+    favorited_by = relationship("FavoriteProduct", back_populates="product")

@@ -17,6 +17,25 @@ cloudinary.config(
     api_secret="p-OSCOIhBEzKAkRsrH4Ksyqw1PY"
 )
 
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from sqlalchemy.orm import Session
+from typing import List, Optional
+from api.db.database import get_db
+from api.db.models import Product, User, Category, Dormitory
+from api.schemas.product import ProductCreate, ProductUpdate, ProductResponse, PaginatedProductResponse, ProductModeration
+from api.core.dependencies import get_current_user, get_current_admin
+import cloudinary
+import cloudinary.uploader
+
+router = APIRouter()
+
+# Настройка Cloudinary
+cloudinary.config(
+    cloud_name="dnoyteqkn",
+    api_key="359235721338924",
+    api_secret="p-OSCOIhBEzKAkRsrH4Ksyqw1PY"
+)
+
 @router.get("/products", response_model=PaginatedProductResponse)
 def get_products(
     page: int = 1,
@@ -52,8 +71,8 @@ def get_products(
         dormitory = db.query(Dormitory).filter(Dormitory.id == product.dormitory_id).first() if product.dormitory_id else None
         seller = db.query(User).filter(User.id == product.seller_id).first()
 
-        seller_telegram = seller.social_links.get("telegram") if seller and seller.social_links else None
-        seller_vk = seller.social_links.get("vk") if seller and seller.social_links else None
+        seller_telegram = product.seller_telegram  # Используем сохраненное значение
+        seller_vk = product.seller_vk             # Используем сохраненное значение
 
         # Преобразуем словарь в список, если он есть
         image_urls = list(product.image_urls.values()) if product.image_urls and isinstance(product.image_urls, dict) else product.image_urls or []
@@ -104,8 +123,8 @@ def get_product(
     dormitory = db.query(Dormitory).filter(Dormitory.id == product.dormitory_id).first() if product.dormitory_id else None
     seller = db.query(User).filter(User.id == product.seller_id).first()
 
-    seller_telegram = seller.social_links.get("telegram") if seller and seller.social_links else None
-    seller_vk = seller.social_links.get("vk") if seller and seller.social_links else None
+    seller_telegram = product.seller_telegram  # Используем сохраненное значение
+    seller_vk = product.seller_vk             # Используем сохраненное значение
 
     # Преобразуем словарь в список, если он есть
     image_urls = list(product.image_urls.values()) if product.image_urls and isinstance(product.image_urls, dict) else product.image_urls or []
@@ -128,7 +147,7 @@ def get_product(
         "seller_telegram": seller_telegram,
         "seller_vk": seller_vk
     }
-
+    
 @router.post("/products", response_model=ProductResponse)
 async def create_product(
     title: str = Form(...),
@@ -140,18 +159,32 @@ async def create_product(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    # Проверка прав
     if not current_user.id:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
 
+    # Проверка social_links
+    if not current_user.social_links or (
+        not current_user.social_links.get("telegram") and 
+        not current_user.social_links.get("vk")
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Для создания товара необходимо указать хотя бы одну контактную ссылку (Telegram или VK) в профиле"
+        )
+
+    # Проверка категории
     category = db.query(Category).filter(Category.id == category_id).first()
     if not category:
         raise HTTPException(status_code=400, detail="Категория не найдена")
 
+    # Проверка общежития
     if dormitory_id:
         dormitory = db.query(Dormitory).filter(Dormitory.id == dormitory_id).first()
         if not dormitory:
             raise HTTPException(status_code=400, detail="Общежитие не найдено")
 
+    # Загрузка изображений
     image_urls = []
     if images:
         for i, image in enumerate(images, 1):
@@ -165,6 +198,11 @@ async def create_product(
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Ошибка загрузки изображения {i}: {str(e)}")
 
+    # Извлекаем данные продавца
+    seller_telegram = current_user.social_links.get("telegram") if current_user.social_links else None
+    seller_vk = current_user.social_links.get("vk") if current_user.social_links else None
+
+    # Создание нового товара
     db_product = Product(
         title=title,
         description=description,
@@ -173,18 +211,18 @@ async def create_product(
         image_urls=image_urls if image_urls else None,
         category_id=category_id,
         dormitory_id=dormitory_id,
-        status="pending"
+        status="pending",
+        seller_telegram=seller_telegram,  # Автоматически добавляем telegram
+        seller_vk=seller_vk              # Автоматически добавляем vk
     )
     db.add(db_product)
     db.commit()
     db.refresh(db_product)
 
+    # Формирование ответа
     category = db.query(Category).filter(Category.id == db_product.category_id).first()
     dormitory = db.query(Dormitory).filter(Dormitory.id == db_product.dormitory_id).first() if db_product.dormitory_id else None
     seller = db.query(User).filter(User.id == db_product.seller_id).first()
-
-    seller_telegram = seller.social_links.get("telegram") if seller and seller.social_links else None
-    seller_vk = seller.social_links.get("vk") if seller and seller.social_links else None
 
     return {
         "id": db_product.id,
@@ -201,9 +239,12 @@ async def create_product(
         "dormitory_id": db_product.dormitory_id,
         "dormitory_name": dormitory.name if dormitory else None,
         "rejection_reason": None,
-        "seller_telegram": seller_telegram,
-        "seller_vk": seller_vk
+        "seller_telegram": db_product.seller_telegram,  # Используем сохранённое значение
+        "seller_vk": db_product.seller_vk              # Используем сохранённое значение
     }
+
+# Остальные эндпоинты (get, put, delete, moderate) остаются без изменений,
+# но могут использовать сохраненные значения seller_telegram и seller_vk
 
 @router.put("/products/{product_id}", response_model=ProductResponse)
 async def update_product(
