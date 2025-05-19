@@ -4,7 +4,7 @@ from typing import List, Optional, Dict
 from datetime import date
 from sqlalchemy.sql import func
 from api.db.database import get_db
-from api.db.models import User, Dormitory, Room, Role, UserViolation
+from api.db.models import User, Dormitory, Room, Role, UserViolation, Product
 from api.schemas.user import PaginatedUserResponse, UserResponse, UserCreate, UserUpdate
 from api.core.dependencies import get_current_admin, get_current_user
 import hashlib
