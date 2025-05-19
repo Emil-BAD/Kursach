@@ -185,7 +185,7 @@ def update_user(
     social_links_tg: Optional[str] = Form(None, alias="social_links[tg]"),  # Псевдоним для social_links[tg]
     social_links_vk: Optional[str] = Form(None, alias="social_links[vk]"),  # Псевдоним для social_links[vk]
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin)
+    current_user: User = Depends(get_current_user)
 ):
     db_user = db.query(User).filter(User.id == user_id).first()
     if not db_user:
