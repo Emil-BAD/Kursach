@@ -31,7 +31,7 @@ class UserViolationResponse(BaseModel):
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class PaginatedUserViolationResponse(BaseModel):
     items: List[UserViolationResponse]
@@ -41,6 +41,6 @@ class PaginatedUserViolationResponse(BaseModel):
     total_pages: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # ... (остальные схемы остаются без изменений)

@@ -1,52 +1,134 @@
-from fastapi import APIRouter, Depends, HTTPException, Form
-from sqlalchemy.orm import Session
-from typing import List, Optional, Dict
 from datetime import date
-from sqlalchemy.sql import func
-from api.db.database import get_db
-from api.db.models import User, Dormitory, Room, Role, UserViolation
-from api.schemas.user import PaginatedUserResponse, UserResponse, UserCreate, UserUpdate
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Form, HTTPException
+from sqlalchemy.orm import Session, joinedload
+
+from api.core.auth import get_password_hash
 from api.core.dependencies import get_current_admin
-import hashlib
-import json
+from api.db.database import get_db
+from api.db.models import Dormitory, Product, Role, Room, User
+from api.schemas.user import PaginatedUserResponse, UserCreate, UserResponse
+from api.services.user_helpers import build_user_response, sync_user_points
 
 router = APIRouter()
+
+
+def _get_user_or_404(db: Session, user_id: int) -> User:
+    user = (
+        db.query(User)
+        .options(joinedload(User.role), joinedload(User.dormitory), joinedload(User.room))
+        .filter(User.id == user_id)
+        .first()
+    )
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    return user
+
+
+def _validate_role(db: Session, role_id: int) -> Role:
+    role = db.query(Role).filter(Role.id == role_id).first()
+    if not role:
+        raise HTTPException(status_code=400, detail="Роль с указанным ID не найдена")
+    return role
+
+
+def _validate_dormitory(db: Session, dormitory_id: Optional[int]) -> Optional[Dormitory]:
+    if dormitory_id is None:
+        return None
+    dormitory = db.query(Dormitory).filter(Dormitory.id == dormitory_id).first()
+    if not dormitory:
+        raise HTTPException(status_code=400, detail="Общежитие с указанным ID не найдено")
+    return dormitory
+
+
+def _validate_room(db: Session, room_id: Optional[int], dormitory_id: Optional[int]) -> Optional[Room]:
+    if room_id is None:
+        return None
+
+    room = db.query(Room).filter(Room.id == room_id).first()
+    if not room:
+        raise HTTPException(status_code=400, detail="Комната с указанным ID не найдена")
+    if dormitory_id is not None and room.dormitory_id != dormitory_id:
+        raise HTTPException(status_code=400, detail="Комната не относится к выбранному общежитию")
+    return room
+
+
+def _parse_birth_date(raw_value: Optional[str]) -> Optional[date]:
+    if raw_value is None or raw_value == "":
+        return None
+    try:
+        return date.fromisoformat(raw_value)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Неверный формат даты. Используйте ISO формат, например 2000-05-15",
+        )
+
+
+def _update_user_products_contacts(db: Session, user: User) -> None:
+    """
+    Синхронизирует контакты продавца в уже опубликованных товарах.
+
+    Это нужно, потому что в текущем API `products` хранят контакты отдельно
+    от профиля пользователя.
+    """
+    telegram = user.social_links.get("telegram") if user.social_links else None
+    vk = user.social_links.get("vk") if user.social_links else None
+
+    products = db.query(Product).filter(Product.seller_id == user.id).all()
+    for product in products:
+        product.seller_telegram = telegram
+        product.seller_vk = vk
 
 
 @router.post("/users", response_model=UserResponse)
 def create_user(
     user: UserCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin)
+    current_user: User = Depends(get_current_admin),
 ):
-    # Проверка существования общежития
-    if user.dormitory_id:
-        dormitory = db.query(Dormitory).filter(Dormitory.id == user.dormitory_id).first()
-        if not dormitory:
-            raise HTTPException(status_code=400, detail="Общежитие с указанным ID не найдено")
+    """
+    Создать пользователя (только администратор).
 
-    # Проверка существования комнаты
-    if user.room_id:
-        room = db.query(Room).filter(Room.id == user.room_id).first()
-        if not room:
-            raise HTTPException(status_code=400, detail="Комната с указанным ID не найдена")
+    Что делает:
+    Создаёт нового пользователя в системе, валидирует роль, общежитие и комнату,
+    а пароль из поля `password_hash` хеширует перед записью в БД.
 
-    # Проверка существования роли
-    role = db.query(Role).filter(Role.id == user.role_id).first()
-    if not role:
-        raise HTTPException(status_code=400, detail="Роль с указанным ID не найдена")
+    Что принимает:
+    ```json
+    {
+      "student_card": "AB12345",
+      "password_hash": "MySecret123",
+      "full_name": "Иван Иванов",
+      "contact_number": 79001234567,
+      "dormitory_id": 1,
+      "room_id": 2,
+      "group_number": 101,
+      "specialization": "ИСиТ",
+      "role_id": 1,
+      "email": "a@b.ru",
+      "phone": "+79991234567",
+      "birth_date": "2000-05-01",
+      "course": 2,
+      "faculty": "ФИТ",
+      "social_links": {"telegram": "@ivan"}
+    }
+    ```
 
-    # Проверка уникальности студенческого билета
+    Что возвращает:
+    Полный профиль пользователя в формате `UserResponse`.
+    """
+    _validate_role(db, user.role_id)
+    _validate_dormitory(db, user.dormitory_id)
+    _validate_room(db, user.room_id, user.dormitory_id)
+
     if db.query(User).filter(User.student_card == user.student_card).first():
-        raise HTTPException(status_code=400, detail="Пользователь с таким номером студенческого билета уже существует")
+        raise HTTPException(status_code=400, detail="Пользователь с таким студенческим билетом уже существует")
 
-    # Простое хеширование пароля (замени на реальный метод, например, bcrypt)
-    password_hash = hashlib.sha256(user.student_card.encode() + "salt".encode()).hexdigest()  # Пример, не используй в продакшене без нормального хеширования
-
-    # Создание нового пользователя
     db_user = User(
         student_card=user.student_card,
-        password_hash=password_hash,
+        password_hash=get_password_hash(user.password_hash),
         full_name=user.full_name,
         contact_number=user.contact_number,
         dormitory_id=user.dormitory_id,
@@ -59,56 +141,14 @@ def create_user(
         birth_date=user.birth_date,
         course=user.course,
         faculty=user.faculty,
-        social_links=user.social_links
+        social_links=user.social_links,
+        points={"total": 100},
     )
     db.add(db_user)
     db.commit()
-    db.refresh(db_user)
 
-    # Инициализация начальных баллов
-    current_points = {"total": 100}
-    db_user.points = current_points
-
-    # Сохранение изменений
-    db.commit()
-
-    # Получение связанных данных
-    dormitory = db.query(Dormitory).filter(Dormitory.id == db_user.dormitory_id).first() if db_user.dormitory_id else None
-    room = db.query(Room).filter(Room.id == db_user.room_id).first() if db_user.room_id else None
-    role = db.query(Role).filter(Role.id == db_user.role_id).first()
-
-    # Подсчет начальных нарушений и активности (на момент создания пусто)
-    total_penalty = 0  # Нет нарушений при создании
-    current_points = {"total": max(0, 100 - total_penalty)}
-    db_user.points = current_points
-    db.commit()
-
-    # Формирование ответа
-    return UserResponse(
-        id=db_user.id,
-        student_card=db_user.student_card,
-        full_name=db_user.full_name,
-        contact_number=db_user.contact_number,
-        dormitory_id=db_user.dormitory_id,
-        dormitory_name=dormitory.name if dormitory else None,
-        room_id=db_user.room_id,
-        room_number=room.room_number if room else None,
-        group_number=db_user.group_number,
-        specialization=db_user.specialization,
-        role_id=db_user.role_id,
-        role_name=role.role_name if role else "Unknown",
-        email=db_user.email,
-        phone=db_user.phone,
-        birth_date=db_user.birth_date,
-        course=db_user.course,
-        faculty=db_user.faculty,
-        created_at=db_user.created_at,
-        points=current_points,
-        social_links=db_user.social_links,
-        violations=[],  # Пустой список при создании
-        room_violation_frequency=0,  # Начальное значение
-        activities=[]  # Пустой список при создании
-    )
+    created_user = _get_user_or_404(db, db_user.id)
+    return build_user_response(db, created_user)
 
 
 @router.get("/users", response_model=PaginatedUserResponse)
@@ -116,54 +156,47 @@ def get_users(
     page: int = 1,
     size: int = 10,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin)
+    current_user: User = Depends(get_current_admin),
 ):
+    """
+    Получить список пользователей с пагинацией.
+
+    Что делает:
+    Возвращает пользователей постранично с профилями, ролью, комнатой и общежитием.
+
+    Что принимает:
+    Query-параметры:
+    - `page` — номер страницы
+    - `size` — размер страницы
+
+    Что возвращает:
+    ```json
+    {
+      "items": [...],
+      "total": 100,
+      "page": 1,
+      "size": 10,
+      "total_pages": 10
+    }
+    ```
+    """
     skip = (page - 1) * size
     total = db.query(User).count()
-    users = db.query(User).offset(skip).limit(size).all()
-
-    user_responses = []
-    for user in users:
-        dormitory = db.query(Dormitory).filter(Dormitory.id == user.dormitory_id).first() if user.dormitory_id else None
-        room = db.query(Room).filter(Room.id == user.room_id).first() if user.room_id else None
-        role = db.query(Role).filter(Role.id == user.role_id).first()
-
-        total_penalty = db.query(UserViolation).filter(UserViolation.user_id == user.id).with_entities(func.sum(UserViolation.penalty_points)).scalar() or 0
-        current_points = {"total": max(0, 100 - total_penalty)}
-
-        user_responses.append(
-            UserResponse(
-                id=user.id,
-                student_card=user.student_card,
-                full_name=user.full_name,
-                contact_number=user.contact_number,
-                dormitory_id=user.dormitory_id,
-                dormitory_name=dormitory.name if dormitory else None,
-                room_id=user.room_id,  # Может быть None
-                room_number=room.room_number if room else None,  # Проверяем, есть ли room
-                group_number=user.group_number,
-                specialization=user.specialization,
-                role_id=user.role_id,
-                role_name=role.role_name if role else "Unknown",
-                email=user.email,
-                phone=user.phone,
-                birth_date=user.birth_date,
-                course=user.course,
-                faculty=user.faculty,
-                created_at=user.created_at,
-                points=current_points,
-                social_links=user.social_links
-            )
-        )
-
-    total_pages = (total + size - 1) // size
+    users = (
+        db.query(User)
+        .options(joinedload(User.role), joinedload(User.dormitory), joinedload(User.room))
+        .order_by(User.id)
+        .offset(skip)
+        .limit(size)
+        .all()
+    )
 
     return PaginatedUserResponse(
-        items=user_responses,
+        items=[build_user_response(db, user, include_violations=False, include_activities=False) for user in users],
         total=total,
         page=page,
         size=size,
-        total_pages=total_pages
+        total_pages=(total + size - 1) // size,
     )
 
 
@@ -182,34 +215,38 @@ def update_user(
     birth_date: Optional[str] = Form(None),
     course: Optional[int] = Form(None),
     faculty: Optional[str] = Form(None),
-    social_links_tg: Optional[str] = Form(None, alias="social_links[tg]"),  # Псевдоним для social_links[tg]
-    social_links_vk: Optional[str] = Form(None, alias="social_links[vk]"),  # Псевдоним для social_links[vk]
+    social_links_telegram: Optional[str] = Form(None, alias="social_links[telegram]"),
+    social_links_vk: Optional[str] = Form(None, alias="social_links[vk]"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin)
+    current_user: User = Depends(get_current_admin),
 ):
-    db_user = db.query(User).filter(User.id == user_id).first()
-    if not db_user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    """
+    Обновить пользователя (админ). Принимает `multipart/form-data`.
 
-    # Проверка существования роли
+    Что делает:
+    Меняет профиль пользователя, общежитие, комнату, роль и контакты.
+
+    Что принимает:
+    Form-data, например:
+    - `full_name=Иван Петров`
+    - `dormitory_id=1`
+    - `room_id=3`
+    - `social_links[telegram]=@ivan`
+    - `social_links[vk]=https://vk.com/ivan`
+
+    Что возвращает:
+    Полный обновлённый профиль пользователя.
+    """
+    db_user = _get_user_or_404(db, user_id)
+
+    target_dormitory_id = db_user.dormitory_id if dormitory_id is None else dormitory_id
+    target_room_id = db_user.room_id if room_id is None else room_id
+
     if role_id is not None:
-        role = db.query(Role).filter(Role.id == role_id).first()
-        if not role:
-            raise HTTPException(status_code=400, detail="Роль с указанным ID не найдена")
+        _validate_role(db, role_id)
+    _validate_dormitory(db, target_dormitory_id)
+    _validate_room(db, target_room_id, target_dormitory_id)
 
-    # Проверка существования общежития
-    if dormitory_id is not None:
-        dormitory = db.query(Dormitory).filter(Dormitory.id == dormitory_id).first()
-        if not dormitory:
-            raise HTTPException(status_code=400, detail="Общежитие с указанным ID не найдено")
-
-    # Проверка существования комнаты
-    if room_id is not None:
-        room = db.query(Room).filter(Room.id == room_id).first()
-        if not room:
-            raise HTTPException(status_code=400, detail="Комната с указанным ID не найдена")
-
-    # Обновление полей
     if full_name is not None:
         db_user.full_name = full_name
     if contact_number is not None:
@@ -229,86 +266,49 @@ def update_user(
     if phone is not None:
         db_user.phone = phone
     if birth_date is not None:
-        try:
-            db_user.birth_date = date.fromisoformat(birth_date)
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Неверный формат даты. Используйте ISO формат (например, 2000-05-15)")
+        db_user.birth_date = _parse_birth_date(birth_date)
     if course is not None:
         db_user.course = course
     if faculty is not None:
         db_user.faculty = faculty
 
-    # Обновление social_links
-    social_links_dict = db_user.social_links or {}
-    if social_links_tg is not None:
-        social_links_dict["tg"] = social_links_tg
+    social_links = dict(db_user.social_links or {})
+    if social_links_telegram is not None:
+        social_links["telegram"] = social_links_telegram
     if social_links_vk is not None:
-        social_links_dict["vk"] = social_links_vk
-    if social_links_tg is not None or social_links_vk is not None:
-        db_user.social_links = social_links_dict
+        social_links["vk"] = social_links_vk
+    if social_links_telegram is not None or social_links_vk is not None:
+        db_user.social_links = social_links
+        _update_user_products_contacts(db, db_user)
 
-    # Обновление всех товаров пользователя
-    if social_links_tg is not None or social_links_vk is not None:
-        products = db.query(Product).filter(Product.seller_id == user_id).all()
-        for product in products:
-            product.seller_telegram = social_links_dict.get("tg")
-            product.seller_vk = social_links_dict.get("vk")
-        db.commit()
-
-    db.commit()
-    db.refresh(db_user)
-
-    # Пересчёт баллов
-    total_penalty = db.query(UserViolation).filter(UserViolation.user_id == db_user.id).with_entities(func.sum(UserViolation.penalty_points)).scalar() or 0
-    current_points = {"total": max(0, 100 - total_penalty)}
-    db_user.points = current_points
+    sync_user_points(db, db_user)
     db.commit()
 
-    # Формирование ответа
-    dormitory = db.query(Dormitory).filter(Dormitory.id == db_user.dormitory_id).first() if db_user.dormitory_id else None
-    room = db.query(Room).filter(Room.id == db_user.room_id).first() if db_user.room_id else None
-    role = db.query(Role).filter(Role.id == db_user.role_id).first()
-
-    return UserResponse(
-        id=db_user.id,
-        student_card=db_user.student_card,
-        full_name=db_user.full_name,
-        contact_number=db_user.contact_number,
-        dormitory_id=db_user.dormitory_id,
-        dormitory_name=dormitory.name if dormitory else None,
-        room_id=db_user.room_id,
-        room_number=room.room_number if room else None,
-        group_number=db_user.group_number,
-        specialization=db_user.specialization,
-        role_id=db_user.role_id,
-        role_name=role.role_name if role else "Unknown",
-        email=db_user.email,
-        phone=db_user.phone,
-        birth_date=db_user.birth_date,
-        course=db_user.course,
-        faculty=db_user.faculty,
-        created_at=db_user.created_at,
-        points=current_points,
-        social_links=db_user.social_links,
-        violations=[],
-        room_violation_frequency=0,
-        activities=[]
-    )
+    updated_user = _get_user_or_404(db, user_id)
+    return build_user_response(db, updated_user)
 
 
 @router.delete("/users/{user_id}", response_model=dict)
 def delete_user(
     user_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin)
+    current_user: User = Depends(get_current_admin),
 ):
-    # Поиск пользователя
-    db_user = db.query(User).filter(User.id == user_id).first()
-    if not db_user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    """
+    Удалить пользователя (админ).
 
-    # Удаление пользователя (связанные записи удалятся автоматически)
+    Что делает:
+    Удаляет пользователя по ID. Связанные записи удаляются по правилам внешних ключей.
+
+    Что принимает:
+    Path-параметр `user_id`.
+
+    Что возвращает:
+    ```json
+    {"message": "Пользователь с ID 5 успешно удалён"}
+    ```
+    """
+    db_user = _get_user_or_404(db, user_id)
     db.delete(db_user)
     db.commit()
-
     return {"message": f"Пользователь с ID {user_id} успешно удалён"}

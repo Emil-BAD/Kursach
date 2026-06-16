@@ -23,3 +23,4 @@ class Event(Base):
     category = relationship("Category", back_populates="events")
     dormitory = relationship("Dormitory", back_populates="events")
     registrations = relationship("EventRegistration", back_populates="event")
+    related_calendar_events = relationship("CalendarEvent", back_populates="related_event")

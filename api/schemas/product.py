@@ -41,7 +41,7 @@ class ProductResponse(BaseModel):
     seller_vk: Optional[str] = None        # Уже присутствует
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class PaginatedProductResponse(BaseModel):
     items: List[ProductResponse]
@@ -51,7 +51,7 @@ class PaginatedProductResponse(BaseModel):
     total_pages: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class ProductModeration(BaseModel):
     status: str

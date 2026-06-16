@@ -65,7 +65,7 @@ class UserActivityResponse(BaseModel):
     points_added: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class ActivityResponse(BaseModel):
     id: int
@@ -77,7 +77,7 @@ class ActivityResponse(BaseModel):
     notes: Optional[str] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class ViolationResponse(BaseModel):
     id: int
@@ -91,7 +91,7 @@ class ViolationResponse(BaseModel):
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class UserResponse(BaseModel):
     id: int
@@ -109,18 +109,19 @@ class UserResponse(BaseModel):
     role_description: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
-    birth_date: Optional[datetime] = None
+    birth_date: Optional[date] = None
     course: Optional[int] = None  # Изменили с str на int
     faculty: Optional[str] = None
     created_at: datetime
     points: dict  # Оставляем int, но нужно исправить передачу данных
     social_links: Optional[dict] = None
-    violations: List[ViolationResponse] = []
+    violations: List[ViolationResponse] = Field(default_factory=list)
     room_violation_frequency: Optional[int] = None
-    activities: List[ActivityResponse] = []
+    room_cleanliness_points: Optional[float] = None
+    activities: List[ActivityResponse] = Field(default_factory=list)
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class PointsHistory(BaseModel):
     change: int

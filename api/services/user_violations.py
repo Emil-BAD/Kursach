@@ -1,12 +1,45 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
-from typing import List
+
+from api.core.dependencies import get_current_admin, get_current_user
 from api.db.database import get_db
-from api.db.models import UserViolation, User, ViolationType
-from api.schemas.user_violations import UserViolationCreate, UserViolationUpdate, UserViolationResponse, PaginatedUserViolationResponse
-from api.core.dependencies import get_current_user, get_current_admin
+from api.db.models import User, UserViolation, ViolationType
+from api.schemas.user_violations import (
+    PaginatedUserViolationResponse,
+    UserViolationCreate,
+    UserViolationResponse,
+    UserViolationUpdate,
+)
+from api.services.user_helpers import can_view_discipline_for_all, sync_user_points
 
 router = APIRouter()
+
+
+def _get_violation_or_404(db: Session, violation_id: int) -> UserViolation:
+    violation = (
+        db.query(UserViolation)
+        .options(joinedload(UserViolation.user), joinedload(UserViolation.violation_type))
+        .filter(UserViolation.id == violation_id)
+        .first()
+    )
+    if not violation:
+        raise HTTPException(status_code=404, detail="Нарушение не найдено")
+    return violation
+
+
+def _build_violation_response(item: UserViolation) -> UserViolationResponse:
+    return UserViolationResponse(
+        id=item.id,
+        user_id=item.user_id,
+        user_name=item.user.full_name if item.user else "Unknown",
+        violation_type_id=item.violation_type_id,
+        violation_type_name=item.violation_type.name if item.violation_type else "Unknown",
+        violation_date=item.violation_date,
+        penalty_points=item.penalty_points,
+        description=item.description,
+        created_at=item.created_at,
+    )
+
 
 @router.get("/user-violations", response_model=PaginatedUserViolationResponse)
 def get_user_violations(
@@ -15,89 +48,96 @@ def get_user_violations(
     user_id: int = None,
     violation_type_id: int = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
+    """
+    Получить список нарушений.
+
+    Что делает:
+    Админские роли видят общий список, студент — только свои нарушения.
+
+    Что принимает:
+    Query-параметры:
+    - `page`
+    - `per_page`
+    - `user_id`
+    - `violation_type_id`
+
+    Что возвращает:
+    Пагинированный список нарушений.
+    """
     skip = (page - 1) * per_page
     query = db.query(UserViolation).options(
         joinedload(UserViolation.user),
-        joinedload(UserViolation.violation_type)
+        joinedload(UserViolation.violation_type),
     )
 
-    # Фильтрация
     if user_id:
         query = query.filter(UserViolation.user_id == user_id)
     if violation_type_id:
         query = query.filter(UserViolation.violation_type_id == violation_type_id)
 
-    # Ограничение доступа
-    if current_user.role_id not in [1, 2, 3]:
+    if not can_view_discipline_for_all(current_user):
         query = query.filter(UserViolation.user_id == current_user.id)
 
     total = query.count()
-    violations = query.offset(skip).limit(per_page).all()
-
-    violation_responses = []
-    for violation in violations:
-        violation_responses.append({
-            "id": violation.id,
-            "user_id": violation.user_id,
-            "user_name": violation.user.full_name if violation.user else "Unknown",
-            "violation_type_id": violation.violation_type_id,
-            "violation_type_name": violation.violation_type.name if violation.violation_type else "Unknown",
-            "violation_type_description": violation.violation_type.description if violation.violation_type else None,
-            "violation_type_default_penalty_points": violation.violation_type.default_penalty_points if violation.violation_type else None,
-            "violation_date": violation.violation_date.isoformat(),
-            "penalty_points": violation.penalty_points,
-            "description": violation.description,
-            "created_at": violation.created_at.isoformat()
-        })
-
-    total_pages = (total + per_page - 1) // per_page
+    violations = (
+        query.order_by(UserViolation.violation_date.desc(), UserViolation.id.desc())
+        .offset(skip)
+        .limit(per_page)
+        .all()
+    )
 
     return PaginatedUserViolationResponse(
-        items=violation_responses,
+        items=[_build_violation_response(item) for item in violations],
         total=total,
         page=page,
         per_page=per_page,
-        total_pages=total_pages
+        total_pages=(total + per_page - 1) // per_page,
     )
+
 
 @router.get("/user-violations/{violation_id}", response_model=UserViolationResponse)
 def get_user_violation(
     violation_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
-    violation = db.query(UserViolation).options(
-        joinedload(UserViolation.user),
-        joinedload(UserViolation.violation_type)
-    ).filter(UserViolation.id == violation_id).first()
-    if not violation:
-        raise HTTPException(status_code=404, detail="Нарушение не найдено")
-
-    if current_user.role_id not in [1, 2, 3] and violation.user_id != current_user.id:
+    """
+    Получить одно нарушение по ID.
+    """
+    violation = _get_violation_or_404(db, violation_id)
+    if not can_view_discipline_for_all(current_user) and violation.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Недостаточно прав для просмотра нарушения")
+    return _build_violation_response(violation)
 
-    return {
-        "id": violation.id,
-        "user_id": violation.user_id,
-        "user_name": violation.user.full_name if violation.user else "Unknown",
-        "violation_type_id": violation.violation_type_id,
-        "violation_type_name": violation.violation_type.name if violation.violation_type else "Unknown",
-        "violation_type_description": violation.violation_type.description if violation.violation_type else None,
-        "violation_type_default_penalty_points": violation.violation_type.default_penalty_points if violation.violation_type else None,
-        "violation_date": violation.violation_date.isoformat(),
-        "penalty_points": violation.penalty_points,
-        "description": violation.description,
-        "created_at": violation.created_at.isoformat()
-    }
 
 @router.post("/user-violations", response_model=UserViolationResponse)
 def create_user_violation(
     violation: UserViolationCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin)
+    current_user: User = Depends(get_current_admin),
 ):
+    """
+    Создать нарушение пользователя.
+
+    Что делает:
+    Добавляет нарушение, затем пересчитывает баллы студента.
+
+    Что принимает:
+    ```json
+    {
+      "user_id": 5,
+      "violation_type_id": 1,
+      "violation_date": "2026-04-29T10:00:00",
+      "penalty_points": 10,
+      "description": "Шум после 23:00"
+    }
+    ```
+
+    Что возвращает:
+    Объект созданного нарушения.
+    """
     user = db.query(User).filter(User.id == violation.user_id).first()
     if not user:
         raise HTTPException(status_code=400, detail="Пользователь с указанным ID не найден")
@@ -111,85 +151,53 @@ def create_user_violation(
         violation_type_id=violation.violation_type_id,
         violation_date=violation.violation_date,
         penalty_points=violation.penalty_points,
-        description=violation.description
+        description=violation.description,
     )
     db.add(db_violation)
-    db.commit()
-    db.refresh(db_violation)
-
-    # Пересчёт баллов пользователя
-    total_penalty = db.query(UserViolation).filter(UserViolation.user_id == user.id).with_entities(func.sum(UserViolation.penalty_points)).scalar() or 0
-    user.points = {"total": max(0, 100 - total_penalty)}
+    sync_user_points(db, user)
     db.commit()
 
-    user = db.query(User).filter(User.id == db_violation.user_id).first()
-    violation_type = db.query(ViolationType).filter(ViolationType.id == db_violation.violation_type_id).first()
+    return _build_violation_response(_get_violation_or_404(db, db_violation.id))
 
-    return {
-        "id": db_violation.id,
-        "user_id": db_violation.user_id,
-        "user_name": user.full_name if user else "Unknown",
-        "violation_type_id": db_violation.violation_type_id,
-        "violation_type_name": violation_type.name if violation_type else "Unknown",
-        "violation_type_description": violation_type.description if violation_type else None,
-        "violation_type_default_penalty_points": violation_type.default_penalty_points if violation_type else None,
-        "violation_date": db_violation.violation_date.isoformat(),
-        "penalty_points": db_violation.penalty_points,
-        "description": db_violation.description,
-        "created_at": db_violation.created_at.isoformat()
-    }
 
 @router.put("/user-violations/{violation_id}", response_model=UserViolationResponse)
 def update_user_violation(
     violation_id: int,
     violation_update: UserViolationUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin)
+    current_user: User = Depends(get_current_admin),
 ):
-    db_violation = db.query(UserViolation).filter(UserViolation.id == violation_id).first()
-    if not db_violation:
-        raise HTTPException(status_code=404, detail="Нарушение не найдено")
+    """
+    Обновить нарушение пользователя.
+    """
+    db_violation = _get_violation_or_404(db, violation_id)
 
-    for key, value in violation_update.dict(exclude_unset=True).items():
+    for key, value in violation_update.model_dump(exclude_unset=True).items():
         setattr(db_violation, key, value)
 
-    db.commit()
-    db.refresh(db_violation)
-
-    # Пересчёт баллов пользователя
     user = db.query(User).filter(User.id == db_violation.user_id).first()
-    total_penalty = db.query(UserViolation).filter(UserViolation.user_id == user.id).with_entities(func.sum(UserViolation.penalty_points)).scalar() or 0
-    user.points = {"total": max(0, 100 - total_penalty)}
+    if user:
+        sync_user_points(db, user)
     db.commit()
 
-    user = db.query(User).filter(User.id == db_violation.user_id).first()
-    violation_type = db.query(ViolationType).filter(ViolationType.id == db_violation.violation_type_id).first()
+    return _build_violation_response(_get_violation_or_404(db, db_violation.id))
 
-    return {
-        "id": db_violation.id,
-        "user_id": db_violation.user_id,
-        "user_name": user.full_name if user else "Unknown",
-        "violation_type_id": db_violation.violation_type_id,
-        "violation_type_name": violation_type.name if violation_type else "Unknown",
-        "violation_type_description": violation_type.description if violation_type else None,
-        "violation_type_default_penalty_points": violation_type.default_penalty_points if violation_type else None,
-        "violation_date": db_violation.violation_date.isoformat(),
-        "penalty_points": db_violation.penalty_points,
-        "description": db_violation.description,
-        "created_at": db_violation.created_at.isoformat()
-    }
 
 @router.delete("/user-violations/{violation_id}", response_model=dict)
 def delete_user_violation(
     violation_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin)
+    current_user: User = Depends(get_current_admin),
 ):
-    db_violation = db.query(UserViolation).filter(UserViolation.id == violation_id).first()
-    if not db_violation:
-        raise HTTPException(status_code=404, detail="Нарушение не найдено")
+    """
+    Удалить нарушение пользователя.
+    """
+    db_violation = _get_violation_or_404(db, violation_id)
+    user = db.query(User).filter(User.id == db_violation.user_id).first()
 
     db.delete(db_violation)
+    if user:
+        sync_user_points(db, user)
     db.commit()
 
     return {"message": "Нарушение успешно удалено", "violation_id": violation_id}

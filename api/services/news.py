@@ -1,22 +1,31 @@
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form
 from sqlalchemy.orm import Session
 from typing import List, Optional
+
 from api.db.database import get_db
 from api.db.models import News, User, Category, Dormitory
 from api.schemas.news import NewsCreate, NewsUpdate, NewsResponse, PaginatedNewsResponse
 from api.core.dependencies import get_current_user, get_current_admin
-import cloudinary
-import cloudinary.uploader
-from fastapi.responses import JSONResponse
-import json
+from api.utils.cloudinary import ensure_cloudinary_configured, get_cloudinary_uploader
+from api.services.user_helpers import can_manage_news, is_admin
 
 router = APIRouter()
 
-cloudinary.config(
-    cloud_name="dnoyteqkn",
-    api_key="359235721338924",
-    api_secret="p-OSCOIhBEzKAkRsrH4Ksyqw1PY"
-)
+
+def _require_cloudinary():
+    if not ensure_cloudinary_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="Загрузка изображений недоступна: установите библиотеку cloudinary и задайте CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET в .env",
+        )
+
+
+def _get_uploader():
+    _require_cloudinary()
+    uploader = get_cloudinary_uploader()
+    if uploader is None:
+        raise HTTPException(status_code=503, detail="Библиотека cloudinary не установлена")
+    return uploader
 
 # GET /news (без изменений)
 @router.get("/news", response_model=PaginatedNewsResponse)
@@ -41,7 +50,7 @@ def get_news(
         query = query.filter(News.is_private == is_private)
 
     # Ограничение доступа: приватные новости видны только администраторам
-    if current_user.role_id != 1 and is_private is not True:  # Если не администратор, скрываем приватные новости
+    if not is_admin(current_user) and is_private is not True:
         query = query.filter(News.is_private == False)
 
     total = query.count()
@@ -90,7 +99,7 @@ def get_news_by_id(
         raise HTTPException(status_code=404, detail="Новость не найдена")
 
     # Ограничение доступа: приватные новости видны только администраторам
-    if news.is_private and current_user.role_id != 1:
+    if news.is_private and not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Недостаточно прав для просмотра приватной новости")
 
     category = db.query(Category).filter(Category.id == news.category_id).first()
@@ -122,11 +131,9 @@ async def create_news(
     is_private: bool = Form(False),
     images: List[UploadFile] = File(None),  # Поле для загрузки файлов
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin)
+    current_user: User = Depends(get_current_user)
 ):
-    # Ограничение доступа: только определённые администраторы
-    admin_ids = [2, 7, 9, 11, 12]
-    if current_user.role_id not in admin_ids:
+    if not can_manage_news(current_user):
         raise HTTPException(status_code=403, detail="Недостаточно прав для создания новости")
 
     # Проверка существования категории
@@ -143,16 +150,17 @@ async def create_news(
     # Загрузка изображений в Cloudinary
     image_urls = []
     if images:
+        uploader = _get_uploader()
         for image in images:
             try:
-                # Загружаем файл в Cloudinary
-                upload_result = cloudinary.uploader.upload(
+                upload_result = uploader.upload(
                     image.file,
-                    folder="news_images",  # Опционально: папка в Cloudinary
+                    folder="news_images",
                     resource_type="image"
                 )
-                # Получаем URL загруженного изображения
                 image_urls.append(upload_result["secure_url"])
+            except HTTPException:
+                raise
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Ошибка загрузки изображения: {str(e)}")
 
@@ -200,11 +208,9 @@ async def update_news(
     is_private: Optional[bool] = Form(None),  # Опциональное поле
     images: List[UploadFile] = File(None),  # Опциональное поле для изображений
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin)
+    current_user: User = Depends(get_current_user)
 ):
-    # Ограничение доступа: только определённые администраторы
-    admin_ids = [2, 7, 9, 11, 12]
-    if current_user.role_id not in admin_ids:
+    if not can_manage_news(current_user):
         raise HTTPException(status_code=403, detail="Недостаточно прав для редактирования новости")
 
     db_news = db.query(News).filter(News.id == news_id).first()
@@ -237,16 +243,18 @@ async def update_news(
 
     # Загрузка новых изображений в Cloudinary, если переданы
     if images:
+        uploader = _get_uploader()
         image_urls = []
         for image in images:
             try:
-                # Загружаем файл в Cloudinary
-                upload_result = cloudinary.uploader.upload(
+                upload_result = uploader.upload(
                     image.file,
                     folder="news_images",
                     resource_type="image"
                 )
                 image_urls.append(upload_result["secure_url"])
+            except HTTPException:
+                raise
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Ошибка загрузки изображения: {str(e)}")
         # Обновляем список URL-адресов (заменяем старые на новые)
@@ -279,15 +287,14 @@ async def update_news(
 def delete_news(
     news_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin)
+    current_user: User = Depends(get_current_user)
 ):
     db_news = db.query(News).filter(News.id == news_id).first()
     if not db_news:
         raise HTTPException(status_code=404, detail="Новость не найдена")
 
     # Проверка прав: только администраторы с определёнными ID или автор могут удалять
-    admin_ids = [2, 7, 9, 11, 12]
-    if db_news.author_id != current_user.id and current_user.id not in admin_ids:
+    if db_news.author_id != current_user.id and not can_manage_news(current_user):
         raise HTTPException(status_code=403, detail="Недостаточно прав для удаления новости")
 
     db.delete(db_news)

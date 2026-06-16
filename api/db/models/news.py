@@ -16,8 +16,11 @@ class News(Base):
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=False)
     dormitory_id = Column(Integer, ForeignKey("dormitories.id"), nullable=True)
     is_private = Column(Boolean, nullable=False, server_default="FALSE")
+    calendar_start_at = Column(TIMESTAMP, nullable=True)
+    calendar_end_at = Column(TIMESTAMP, nullable=True)
 
     # Связи
     author = relationship("User", back_populates="news")
     category = relationship("Category", back_populates="news")
     dormitory = relationship("Dormitory", back_populates="news")
+    related_calendar_events = relationship("CalendarEvent", back_populates="related_news")

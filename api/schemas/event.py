@@ -45,7 +45,7 @@ class EventResponse(BaseModel):
     requirements: Optional[str] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class PaginatedEventResponse(BaseModel):
     items: List[EventResponse]
@@ -55,7 +55,7 @@ class PaginatedEventResponse(BaseModel):
     total_pages: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class EventRegistrationCreate(BaseModel):
     event_id: int
@@ -74,7 +74,7 @@ class EventRegistrationResponse(BaseModel):
     message: Optional[str] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class PaginatedEventRegistrationResponse(BaseModel):
     items: List[EventRegistrationResponse]
@@ -84,4 +84,4 @@ class PaginatedEventRegistrationResponse(BaseModel):
     total_pages: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True

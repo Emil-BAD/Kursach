@@ -1,13 +1,44 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
-from typing import List
+
+from api.core.dependencies import get_current_admin, get_current_user
 from api.db.database import get_db
-from api.db.models import UserActivity, User, ActivityType
-from api.schemas.user_activity import UserActivityCreate, UserActivityUpdate, UserActivityResponse, PaginatedUserActivityResponse
-from api.core.dependencies import get_current_user, get_current_admin
-from sqlalchemy.sql import func
+from api.db.models import ActivityType, User, UserActivity
+from api.schemas.user_activity import (
+    PaginatedUserActivityResponse,
+    UserActivityCreate,
+    UserActivityResponse,
+)
+from api.services.user_helpers import can_manage_activities, sync_user_points
 
 router = APIRouter()
+
+
+def _get_activity_or_404(db: Session, activity_id: int) -> UserActivity:
+    activity = (
+        db.query(UserActivity)
+        .options(joinedload(UserActivity.user), joinedload(UserActivity.activity_type))
+        .filter(UserActivity.id == activity_id)
+        .first()
+    )
+    if not activity:
+        raise HTTPException(status_code=404, detail="Активность не найдена")
+    return activity
+
+
+def _build_activity_response(item: UserActivity) -> UserActivityResponse:
+    return UserActivityResponse(
+        id=item.id,
+        user_id=item.user_id,
+        user_name=item.user.full_name if item.user else "Unknown",
+        activity_type_id=item.activity_type_id,
+        activity_type_name=item.activity_type.activity_name if item.activity_type else "Unknown",
+        activity_date=item.activity_date,
+        earned_points=item.earned_points,
+        description=item.description,
+        notes=item.notes,
+    )
+
 
 @router.get("/activities", response_model=PaginatedUserActivityResponse)
 def get_activities(
@@ -16,85 +47,98 @@ def get_activities(
     user_id: int = None,
     activity_type_id: int = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
+    """
+    Получить активности пользователей.
+
+    Что делает:
+    Возвращает список активностей. Студент видит только свои записи,
+    сотрудники — записи всех пользователей.
+
+    Что принимает:
+    Query-параметры:
+    - `page`
+    - `per_page`
+    - `user_id`
+    - `activity_type_id`
+
+    Что возвращает:
+    Пагинированный список активностей.
+    """
     skip = (page - 1) * per_page
     query = db.query(UserActivity).options(
         joinedload(UserActivity.user),
-        joinedload(UserActivity.activity_type)
+        joinedload(UserActivity.activity_type),
     )
 
-    # Фильтрация
     if user_id:
         query = query.filter(UserActivity.user_id == user_id)
     if activity_type_id:
         query = query.filter(UserActivity.activity_type_id == activity_type_id)
 
-    # Ограничение доступа: только администраторы или собственные активности
-    if current_user.role_id not in [2, 7, 8, 9]:  # Предполагаем роли 1, 2, 3 как администраторы
+    if not can_manage_activities(current_user):
         query = query.filter(UserActivity.user_id == current_user.id)
 
     total = query.count()
-    activities = query.offset(skip).limit(per_page).all()
-
-    activity_responses = []
-    for activity in activities:
-        activity_responses.append({
-            "id": activity.id,
-            "user_id": activity.user_id,
-            "user_name": activity.user.full_name if activity.user else "Unknown",
-            "activity_type_id": activity.activity_type_id,
-            "activity_type_name": activity.activity_type.activity_name if activity.activity_type else "Unknown",
-            "activity_date": activity.activity_date,
-            "earned_points": activity.earned_points,
-            "description": activity.description,
-            "notes": activity.notes
-        })
-
-    total_pages = (total + per_page - 1) // per_page
+    activities = (
+        query.order_by(UserActivity.activity_date.desc(), UserActivity.id.desc())
+        .offset(skip)
+        .limit(per_page)
+        .all()
+    )
 
     return PaginatedUserActivityResponse(
-        items=activity_responses,
+        items=[_build_activity_response(item) for item in activities],
         total=total,
         page=page,
         per_page=per_page,
-        total_pages=total_pages
+        total_pages=(total + per_page - 1) // per_page,
     )
+
 
 @router.get("/activities/{activity_id}", response_model=UserActivityResponse)
 def get_activity(
     activity_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
-    activity = db.query(UserActivity).options(
-        joinedload(UserActivity.user),
-        joinedload(UserActivity.activity_type)
-    ).filter(UserActivity.id == activity_id).first()
-    if not activity:
-        raise HTTPException(status_code=404, detail="Активность не найдена")
-
-    if current_user.role_id not in [2, 7, 8, 9] and activity.user_id != current_user.id:
+    """
+    Получить одну активность по ID.
+    """
+    activity = _get_activity_or_404(db, activity_id)
+    if not can_manage_activities(current_user) and activity.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Недостаточно прав для просмотра активности")
+    return _build_activity_response(activity)
 
-    return {
-        "id": activity.id,
-        "user_id": activity.user_id,
-        "user_name": activity.user.full_name if activity.user else "Unknown",
-        "activity_type_id": activity.activity_type_id,
-        "activity_type_name": activity.activity_type.activity_name if activity.activity_type else "Unknown",
-        "activity_date": activity.activity_date,
-        "earned_points": activity.earned_points,
-        "description": activity.description,
-        "notes": activity.notes
-    }
 
 @router.post("/activities", response_model=UserActivityResponse)
 def create_activity(
     activity: UserActivityCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin)
+    current_user: User = Depends(get_current_admin),
 ):
+    """
+    Создать активность пользователя.
+
+    Что делает:
+    Добавляет активность и пересчитывает итоговые баллы пользователя.
+
+    Что принимает:
+    ```json
+    {
+      "user_id": 5,
+      "activity_type_id": 2,
+      "activity_date": "2026-04-29T11:00:00",
+      "earned_points": 10,
+      "description": "Участие в мероприятии",
+      "notes": "Помощь в организации"
+    }
+    ```
+
+    Что возвращает:
+    Объект созданной активности.
+    """
     user = db.query(User).filter(User.id == activity.user_id).first()
     if not user:
         raise HTTPException(status_code=400, detail="Пользователь с указанным ID не найден")
@@ -109,53 +153,30 @@ def create_activity(
         activity_date=activity.activity_date,
         earned_points=activity.earned_points,
         description=activity.description,
-        notes=activity.notes
+        notes=activity.notes,
     )
     db.add(db_activity)
-    db.commit()
-    db.refresh(db_activity)
-
-    # Обновление баллов пользователя
-    total_points = db.query(UserActivity).filter(UserActivity.user_id == user.id).with_entities(func.sum(UserActivity.earned_points)).scalar() or 0
-    user.points = {"total": max(100, 100 + total_points)}  # Начинаем с 100 и прибавляем очки
+    sync_user_points(db, user)
     db.commit()
 
-    user = db.query(User).filter(User.id == db_activity.user_id).first()
-    activity_type = db.query(ActivityType).filter(ActivityType.id == db_activity.activity_type_id).first()
+    return _build_activity_response(_get_activity_or_404(db, db_activity.id))
 
-    return {
-        "id": db_activity.id,
-        "user_id": db_activity.user_id,
-        "user_name": user.full_name if user else "Unknown",
-        "activity_type_id": db_activity.activity_type_id,
-        "activity_type_name": activity_type.activity_name if activity_type else "Unknown",
-        "activity_date": db_activity.activity_date,
-        "earned_points": db_activity.earned_points,
-        "description": db_activity.description,
-        "notes": db_activity.notes
-    }
 
 @router.delete("/activities/{activity_id}", response_model=dict)
 def delete_activity(
     activity_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin)
+    current_user: User = Depends(get_current_admin),
 ):
-    db_activity = db.query(UserActivity).filter(UserActivity.id == activity_id).first()
-    if not db_activity:
-        raise HTTPException(status_code=404, detail="Активность не найдена")
-
+    """
+    Удалить активность пользователя.
+    """
+    db_activity = _get_activity_or_404(db, activity_id)
     user = db.query(User).filter(User.id == db_activity.user_id).first()
-    if not user:
-        raise HTTPException(status_code=400, detail="Пользователь не найден")
 
-    # Удаление активности
     db.delete(db_activity)
-    db.commit()
-
-    # Пересчёт баллов пользователя после удаления
-    total_points = db.query(UserActivity).filter(UserActivity.user_id == user.id).with_entities(func.sum(UserActivity.earned_points)).scalar() or 0
-    user.points = {"total": max(100, 100 + total_points)}  # Обновляем с минимальным значением 100
+    if user:
+        sync_user_points(db, user)
     db.commit()
 
     return {"message": "Активность успешно удалена", "activity_id": activity_id}

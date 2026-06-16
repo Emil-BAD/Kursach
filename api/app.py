@@ -1,44 +1,111 @@
-# main.py
-# -*- coding: utf-8 -*-
-from fastapi import FastAPI, Depends
-from sqlalchemy.orm import Session
+﻿# -*- coding: utf-8 -*-
+import sys
+from pathlib import Path
 from typing import List
-from api.core.dependencies import get_current_user, get_current_admin
-from api.db.database import get_db
-from api.db.models import User, Dormitory, CleanlinessHistory, Room, Role, UserViolation, ViolationType, UserActivity, ActivityType
-from api.services.user import router as user_router
+
+from fastapi import Depends, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session, joinedload
+
+# Позволяет запускать приложение двумя способами:
+# 1. из корня проекта: `uvicorn api.app:app --reload`
+# 2. из папки api: `uvicorn app:app --reload`
+#
+# Во втором случае Python не видит пакет `api`, потому что текущая директория
+# становится корнем импорта. Добавляем родительскую папку проекта в sys.path.
+CURRENT_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = CURRENT_DIR.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from api.core.config import settings
+from api.core.dependencies import get_current_admin, get_current_user
+from api.db.database import get_db, init_db
+from api.db.models import (
+    ActivityType,
+    CleanlinessHistory,
+    Dormitory,
+    Role,
+    Room,
+    User,
+    UserActivity,
+    UserViolation,
+    ViolationType,
+)
+from api.schemas.user import UserResponse
+from api.services.cleanliness import check_user_role
+from api.services.user_helpers import build_user_response
+
+# ========== V1/V2 роутеры (новая архитектура) ==========
+from api.v1 import auth, users, news, calendar, admin, cleanliness as cleanliness_v1
+from api.v2 import payments as payments_v2
+
+# ========== Старые роутеры (для совместимости) ==========
+# TODO: Постепенно мигрировать на v1 версию
+from api.services.auth import router as auth_router_old
+from api.services.user import router as user_router_old
 from api.services.news import router as news_router
 from api.services.product import router as product_router
-from api.services.auth import router as auth_router
 from api.services.event import router as event_router
 from api.services.event_registration import router as event_registration_router
 from api.services.user_violations import router as user_violations_router
 from api.services.cleanliness import router as cleanliness_router
-from fastapi.middleware.cors import CORSMiddleware
 from api.services.dormitory import router as dormitory_router
 from api.services.favorite import router as favorite_router
 from api.services.category import router as category_router
 from api.services.activities import router as activities_router
-from api.schemas.user import UserResponse
+from api.services.directories import router as directories_router
+from api.services.payments import router as payments_router
+from api.services.rentals import router as rentals_router, legacy_router as rentals_legacy_router
+from api.services.reports import router as reports_router
+from api.services.residence import router as residence_router
+from api.services.service_requests import router as service_requests_router
 
-app = FastAPI()
+# Инициализация FastAPI
+app = FastAPI(
+    title="Dormitory Management API",
+    description="API для управления общежитиями. Этап 2: новая архитектура.",
+    version="1.0.0",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
+)
 
-origins = [
-    "http://localhost:3000",
-    "https://your-frontend-domain.com",
-    "http://127.0.0.1:3000",
-    "*"
+
+@app.on_event("startup")
+def startup_event():
+    init_db()
+
+# ========== CORS Middleware ==========
+allowed_origins = [
+    origin.strip()
+    for origin in settings.CORS_ORIGINS.split(",")
+    if origin.strip()
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=allowed_origins,
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.include_router(user_router, tags=["users"])
+# ========== Регистрация V1 роутеров (новая архитектура) ==========
+print("[INFO] Регистрирую V1 роутеры (новая архитектура)...")
+app.include_router(auth.router)
+app.include_router(users.router)
+app.include_router(news.router)
+app.include_router(calendar.router)
+app.include_router(admin.router)
+app.include_router(cleanliness_v1.router)
+print("[INFO] Регистрирую V2 роутеры (новая архитектура)...")
+app.include_router(payments_v2.router)
+
+# ========== Регистрация старых роутеров (для совместимости) ==========
+print("[INFO] Регистрирую старые роутеры (для совместимости)...")
+app.include_router(user_router_old, tags=["users-legacy"])
 app.include_router(activities_router, tags=["activities"])
 app.include_router(category_router, tags=["categories"])
 app.include_router(favorite_router, tags=["favorite"])
@@ -49,104 +116,77 @@ app.include_router(news_router, tags=["news"])
 app.include_router(event_router, tags=["event"])
 app.include_router(event_registration_router, tags=["event_registration"])
 app.include_router(product_router, tags=["product"])
-app.include_router(auth_router, tags=["auth"])
+app.include_router(auth_router_old, tags=["auth"])
+app.include_router(service_requests_router, tags=["service_requests"])
+app.include_router(residence_router, tags=["residence"])
+app.include_router(payments_router, tags=["payments"])
+app.include_router(rentals_router, tags=["rentals"])
+app.include_router(rentals_legacy_router, tags=["rentals-legacy"])
+app.include_router(reports_router, tags=["reports"])
+app.include_router(directories_router, tags=["directories"])
 
 @app.get("/users/me", response_model=UserResponse)
 def read_users_me(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    # Получаем связанные данные
-    dormitory = db.query(Dormitory).filter(Dormitory.id == current_user.dormitory_id).first() if current_user.dormitory_id else None
-    room = db.query(Room).filter(Room.id == current_user.room_id).first() if current_user.room_id else None
-    role = db.query(Role).filter(Role.id == current_user.role_id).first()
+    """
+    Профиль текущего пользователя (кто вошёл по Bearer-токену).
 
-    # Получаем историю нарушений пользователя
-    violations = db.query(UserViolation).filter(UserViolation.user_id == current_user.id).all()
-    violation_responses = [
-        {
-            "id": violation.id,
-            "user_id": violation.user_id,
-            "user_name": current_user.full_name,
-            "violation_type_id": violation.violation_type_id,
-            "violation_type_name": db.query(ViolationType).filter(ViolationType.id == violation.violation_type_id).first().name if db.query(ViolationType).filter(ViolationType.id == violation.violation_type_id).first() else "Unknown",
-            "violation_date": violation.violation_date,
-            "penalty_points": violation.penalty_points,
-            "description": violation.description,
-            "created_at": violation.created_at
-        }
-        for violation in violations
-    ]
+    Принимает: заголовок Authorization: Bearer <access_token>, тело не нужно.
 
-    # Рассчитываем частоту нарушений комнаты
-    room_violation_frequency = None
-    if current_user.room_id:
-        room_users = db.query(User).filter(User.room_id == current_user.room_id).all()
-        room_user_ids = [user.id for user in room_users]
-        room_violation_frequency = db.query(UserViolation).filter(UserViolation.user_id.in_(room_user_ids)).count()
-
-    # Получаем активности пользователя с оптимизацией через join
-    activities = (
-        db.query(UserActivity)
-        .join(ActivityType, UserActivity.activity_type_id == ActivityType.id)
-        .filter(UserActivity.user_id == current_user.id)
-        .all()
-    )
-    activity_responses = [
-        {
-            "id": activity.id,
-            "activity_type_id": activity.activity_type_id,
-            "activity_type_name": activity.activity_type.activity_name if activity.activity_type else "Unknown",
-            "activity_date": activity.activity_date,
-            "earned_points": activity.earned_points,  # Добавляем earned_points
-            "description": activity.description,
-            "notes": activity.notes  # Оставляем оба поля
-        }
-        for activity in activities
-    ]
-
-    # Формируем ответ
-    return UserResponse(
-        id=current_user.id,
-        student_card=current_user.student_card,
-        full_name=current_user.full_name,
-        contact_number=current_user.contact_number,
-        dormitory_id=current_user.dormitory_id,
-        dormitory_name=dormitory.name if dormitory else None,
-        room_id=current_user.room_id,
-        room_number=room.room_number if room else None,
-        group_number=current_user.group_number,
-        specialization=current_user.specialization,
-        role_id=current_user.role_id,
-        role_name=role.role_name if role else "Unknown",
-        role_description=role.role_description if role else None,
-        email=current_user.email,
-        phone=current_user.phone,
-        birth_date=current_user.birth_date,
-        course=current_user.course,
-        faculty=current_user.faculty,
-        created_at=current_user.created_at,
-        points=current_user.points,
-        social_links=current_user.social_links,
-        violations=violation_responses,
-        room_violation_frequency=room_violation_frequency,
-        activities=activity_responses
+    Возвращает JSON (UserResponse): билет, ФИО, общежитие, комната, баллы, нарушения, активности и т.д.
+    """
+    return build_user_response(
+        db,
+        current_user,
+        include_room_violation_frequency=False,
     )
 
 @app.get("/admin-only")
 def admin_only(current_user: User = Depends(get_current_admin)):
+    """
+    Тестовый эндпоинт: доступен только администратору (по роли в БД).
+
+    Принимает: Authorization: Bearer <token>
+
+    Возвращает: {"message": "Привет, администратор!"}
+    """
     return {"message": "Привет, администратор!"}
 
+
 @app.get("/cleanliness-history", response_model=List[dict])
-def get_cleanliness_history(db: Session = Depends(get_db)):
-    records = db.query(CleanlinessHistory).all()
+def get_cleanliness_history(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Полная история оценок чистоты по комнатам (для санкомиссии / админки).
+
+    Раньше был открыт без авторизации — это дыра в безопасности. Теперь:
+      - нужен Bearer access-токен;
+      - те же роли, что и для POST /cleanliness (см. check_user_role в cleanliness.py).
+
+    Принимает: Authorization: Bearer <token>
+
+    Возвращает JSON-массив, пример элемента:
+      {"id": 1, "room_id": 5, "score": 4, "assigned_by": "Иванов И.И.", "assigned_at": "2025-01-01T12:00:00"}
+    """
+    check_user_role(current_user)
+    records = (
+        db.query(CleanlinessHistory)
+        .options(joinedload(CleanlinessHistory.assigned_by_user))
+        .order_by(CleanlinessHistory.assigned_at.desc())
+        .all()
+    )
     return [
         {
             "id": r.id,
             "room_id": r.room_id,
             "score": r.score,
-            "assigned_by": r.assigned_by_user.full_name,
-            "assigned_at": r.assigned_at.isoformat()
+            "assigned_by": r.assigned_by_user.full_name if r.assigned_by_user else "Unknown",
+            "assigned_at": r.assigned_at.isoformat() if r.assigned_at else "",
         }
         for r in records
     ]
+

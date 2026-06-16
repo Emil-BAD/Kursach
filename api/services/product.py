@@ -1,40 +1,37 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import List, Optional
+
 from api.db.database import get_db
 from api.db.models import Product, User, Category, Dormitory
 from api.schemas.product import ProductCreate, ProductUpdate, ProductResponse, PaginatedProductResponse, ProductModeration
 from api.core.dependencies import get_current_user, get_current_admin
-import cloudinary
-import cloudinary.uploader
+from api.utils.cloudinary import ensure_cloudinary_configured, get_cloudinary_uploader
+from api.services.user_helpers import can_moderate_products
 
 router = APIRouter()
 
-# Настройка Cloudinary
-cloudinary.config(
-    cloud_name="dnoyteqkn",
-    api_key="359235721338924",
-    api_secret="p-OSCOIhBEzKAkRsrH4Ksyqw1PY"
-)
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
-from sqlalchemy.orm import Session
-from typing import List, Optional
-from api.db.database import get_db
-from api.db.models import Product, User, Category, Dormitory
-from api.schemas.product import ProductCreate, ProductUpdate, ProductResponse, PaginatedProductResponse, ProductModeration
-from api.core.dependencies import get_current_user, get_current_admin
-import cloudinary
-import cloudinary.uploader
+def _require_cloudinary():
+    """Загрузка картинок возможна только если заданы CLOUDINARY_* в .env."""
+    if not ensure_cloudinary_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="Загрузка изображений недоступна: установите библиотеку cloudinary и задайте CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET в .env",
+        )
 
-router = APIRouter()
 
-# Настройка Cloudinary
-cloudinary.config(
-    cloud_name="dnoyteqkn",
-    api_key="359235721338924",
-    api_secret="p-OSCOIhBEzKAkRsrH4Ksyqw1PY"
-)
+def _get_uploader():
+    _require_cloudinary()
+    uploader = get_cloudinary_uploader()
+    if uploader is None:
+        raise HTTPException(status_code=503, detail="Библиотека cloudinary не установлена")
+    return uploader
+
+
+def _can_view_unapproved_products(user: User) -> bool:
+    return can_moderate_products(user)
+
 
 @router.get("/products", response_model=PaginatedProductResponse)
 def get_products(
@@ -56,7 +53,7 @@ def get_products(
     if status:
         query = query.filter(Product.status == status)
 
-    if current_user.role_id not in [1, 2, 3]:
+    if not _can_view_unapproved_products(current_user):
         query = query.filter(
             (Product.status == "approved") | 
             ((Product.status == "pending") & (Product.seller_id == current_user.id))
@@ -91,7 +88,7 @@ def get_products(
             "status": product.status,
             "dormitory_id": product.dormitory_id,
             "dormitory_name": dormitory.name if dormitory else None,
-            "rejection_reason": product.rejection_reason if current_user.role_id in [1, 2, 3] or product.seller_id == current_user.id else None,
+            "rejection_reason": product.rejection_reason if _can_view_unapproved_products(current_user) or product.seller_id == current_user.id else None,
             "seller_telegram": seller_telegram,
             "seller_vk": seller_vk
         })
@@ -116,7 +113,7 @@ def get_product(
     if not product:
         raise HTTPException(status_code=404, detail="Товар не найден")
 
-    if product.status == "pending" and current_user.role_id not in [1, 2, 3] and product.seller_id != current_user.id:
+    if product.status == "pending" and not _can_view_unapproved_products(current_user) and product.seller_id != current_user.id:
         raise HTTPException(status_code=403, detail="Недостаточно прав для просмотра этого товара")
 
     category = db.query(Category).filter(Category.id == product.category_id).first()
@@ -143,7 +140,7 @@ def get_product(
         "status": product.status,
         "dormitory_id": product.dormitory_id,
         "dormitory_name": dormitory.name if dormitory else None,
-        "rejection_reason": product.rejection_reason if current_user.role_id in [1, 2, 3] or product.seller_id == current_user.id else None,
+        "rejection_reason": product.rejection_reason if _can_view_unapproved_products(current_user) or product.seller_id == current_user.id else None,
         "seller_telegram": seller_telegram,
         "seller_vk": seller_vk
     }
@@ -187,14 +184,17 @@ async def create_product(
     # Загрузка изображений
     image_urls = []
     if images:
+        uploader = _get_uploader()
         for i, image in enumerate(images, 1):
             try:
-                upload_result = cloudinary.uploader.upload(
+                upload_result = uploader.upload(
                     image.file,
                     folder="products",
                     resource_type="image"
                 )
                 image_urls.append(upload_result["secure_url"])
+            except HTTPException:
+                raise
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Ошибка загрузки изображения {i}: {str(e)}")
 
@@ -263,10 +263,10 @@ async def update_product(
     if not db_product:
         raise HTTPException(status_code=404, detail="Товар не найден")
 
-    if db_product.seller_id != current_user.id and current_user.role_id != 2:
+    if db_product.seller_id != current_user.id and not can_moderate_products(current_user):
         raise HTTPException(status_code=403, detail="Недостаточно прав для редактирования товара")
 
-    if db_product.status == "approved" and current_user.role_id != 2:
+    if db_product.status == "approved" and not can_moderate_products(current_user):
         raise HTTPException(status_code=400, detail="Нельзя редактировать товар после одобрения")
 
     if category_id is not None:
@@ -280,15 +280,18 @@ async def update_product(
             raise HTTPException(status_code=400, detail="Общежитие с указанным ID не найдено")
 
     if images:
+        uploader = _get_uploader()
         image_urls = []
         for i, image in enumerate(images, 1):
             try:
-                upload_result = cloudinary.uploader.upload(
+                upload_result = uploader.upload(
                     image.file,
                     folder="products",
                     resource_type="image"
                 )
                 image_urls.append(upload_result["secure_url"])
+            except HTTPException:
+                raise
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Ошибка загрузки изображения {i}: {str(e)}")
         db_product.image_urls = image_urls
@@ -309,7 +312,7 @@ async def update_product(
         if status not in allowed_statuses:
             raise HTTPException(status_code=400, detail=f"Недопустимый статус. Допустимые значения: {allowed_statuses}")
         
-        if status in ["approved", "rejected"] and current_user.role_id != 2:
+        if status in ["approved", "rejected"] and not can_moderate_products(current_user):
             raise HTTPException(status_code=403, detail="Только администратор может устанавливать статус 'approved' или 'rejected'")
         
         db_product.status = status
@@ -324,7 +327,7 @@ async def update_product(
         dormitory_id is not None,
         images and any(image.filename for image in images)
     ]):
-        if current_user.role_id != 2:
+        if not can_moderate_products(current_user):
             db_product.status = "pending"
             db_product.rejection_reason = None
 
@@ -362,13 +365,13 @@ def moderate_product(
     product_id: int,
     moderation: ProductModeration,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin)
+    current_user: User = Depends(get_current_user)
 ):
     db_product = db.query(Product).filter(Product.id == product_id).first()
     if not db_product:
         raise HTTPException(status_code=404, detail="Товар не найден")
 
-    if current_user.role_id not in [1, 2, 3]:
+    if not can_moderate_products(current_user):
         raise HTTPException(status_code=403, detail="Недостаточно прав для модерации товара")
 
     db_product.status = moderation.status
@@ -416,7 +419,7 @@ def delete_product(
     if not db_product:
         raise HTTPException(status_code=404, detail="Товар не найден")
 
-    if db_product.seller_id != current_user.id and current_user.role_id != 1:
+    if db_product.seller_id != current_user.id and not can_moderate_products(current_user):
         raise HTTPException(status_code=403, detail="Недостаточно прав для удаления товара")
 
     db.delete(db_product)

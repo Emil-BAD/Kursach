@@ -22,6 +22,20 @@ from api.db.models.cleanliness_history import CleanlinessHistory
 from api.db.models.action_log import ActionLog
 from api.db.models.refresh_token import RefreshToken
 from api.db.models.favoriteproduct import FavoriteProduct
+from api.db.models.service_request import ServiceRequest
+from api.db.models.service_request_comment import ServiceRequestComment
+from api.db.models.service_request_attachment import ServiceRequestAttachment
+from api.db.models.residence_history import ResidenceHistory
+from api.db.models.payment import Payment
+from api.db.models.payment_account_settings import PaymentAccountSettings
+from api.db.models.payment_top_up import PaymentTopUp
+from api.db.models.dormitory_block import DormitoryBlock
+from api.db.models.dormitory_block_room import DormitoryBlockRoom
+from api.db.models.calendar_event import CalendarEvent
+from api.db.models.kitchen_duty_plan import KitchenDutyPlan
+from api.db.models.kitchen_duty_assignment import KitchenDutyAssignment
+from api.db.models.rental_listing import RentalListing
+from api.db.models.rental_booking import RentalBooking
 
 __all__ = [
     "Base",
@@ -32,7 +46,7 @@ __all__ = [
     "Event",
     "EventRegistration",
     "CleanlinessHistory",
-    "FavoriteProduct"
+    "FavoriteProduct",
     "User",
     "ViolationType",
     "UserViolation",
@@ -44,5 +58,19 @@ __all__ = [
     "NotificationSettings",
     "Notification",
     "ActionLog",
-    "RefreshToken"
+    "RefreshToken",
+    "ServiceRequest",
+    "ServiceRequestComment",
+    "ServiceRequestAttachment",
+    "ResidenceHistory",
+    "Payment",
+    "PaymentAccountSettings",
+    "PaymentTopUp",
+    "DormitoryBlock",
+    "DormitoryBlockRoom",
+    "CalendarEvent",
+    "KitchenDutyPlan",
+    "KitchenDutyAssignment",
+    "RentalListing",
+    "RentalBooking",
 ]

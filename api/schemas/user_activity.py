@@ -33,7 +33,7 @@ class UserActivityResponse(BaseModel):
     notes: Optional[str] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # Схема пагинации
 class PaginatedUserActivityResponse(BaseModel):
@@ -44,4 +44,4 @@ class PaginatedUserActivityResponse(BaseModel):
     total_pages: int
 
     class Config:
-        orm_mode = True
+        from_attributes = True

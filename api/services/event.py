@@ -1,13 +1,48 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from typing import List, Optional
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session, joinedload
+
+from api.core.dependencies import get_current_user
 from api.db.database import get_db
-from api.db.models import Event, User, Category, Dormitory
-from api.schemas.event import PaginatedEventResponse, EventResponse, EventCreate, EventUpdate
-from api.core.dependencies import get_current_admin, get_current_user
-from datetime import datetime
+from api.db.models import Category, Dormitory, Event, User
+from api.schemas.event import EventCreate, EventResponse, EventUpdate, PaginatedEventResponse
+from api.services.calendar_content_sync_service import CalendarContentSyncService
+from api.services.user_helpers import can_manage_events, is_admin
 
 router = APIRouter()
+
+
+def _get_event_or_404(db: Session, event_id: int) -> Event:
+    event = (
+        db.query(Event)
+        .options(joinedload(Event.organizer), joinedload(Event.category), joinedload(Event.dormitory))
+        .filter(Event.id == event_id)
+        .first()
+    )
+    if not event:
+        raise HTTPException(status_code=404, detail="Мероприятие не найдено")
+    return event
+
+
+def _build_event_response(event: Event) -> dict:
+    return {
+        "id": event.id,
+        "title": event.title,
+        "description": event.description,
+        "event_date": event.event_date,
+        "location": event.location,
+        "created_at": event.created_at,
+        "organizer_id": event.organizer_id,
+        "organizer_name": event.organizer.full_name if event.organizer else "Unknown",
+        "category_id": event.category_id,
+        "category_name": event.category.name if event.category else "Unknown",
+        "status": event.status,
+        "dormitory_id": event.dormitory_id,
+        "dormitory_name": event.dormitory.name if event.dormitory else None,
+        "is_private": event.is_private,
+        "requirements": event.requirements,
+    }
+
 
 @router.get("/events", response_model=PaginatedEventResponse)
 def get_events(
@@ -17,10 +52,17 @@ def get_events(
     dormitory_id: int = None,
     is_private: bool = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
+    """
+    Получить список мероприятий.
+    """
     skip = (page - 1) * size
-    query = db.query(Event)
+    query = db.query(Event).options(
+        joinedload(Event.organizer),
+        joinedload(Event.category),
+        joinedload(Event.dormitory),
+    )
 
     if category_id:
         query = query.filter(Event.category_id == category_id)
@@ -28,64 +70,47 @@ def get_events(
         query = query.filter(Event.dormitory_id == dormitory_id)
     if is_private is not None:
         query = query.filter(Event.is_private == is_private)
+    if not is_admin(current_user):
+        query = query.filter(Event.is_private.is_(False))
 
     total = query.count()
-    events = query.offset(skip).limit(size).all()
-
-    event_responses = []
-    for event in events:
-        category = db.query(Category).filter(Category.id == event.category_id).first()
-        dormitory = db.query(Dormitory).filter(Dormitory.id == event.dormitory_id).first() if event.dormitory_id else None
-        organizer = db.query(User).filter(User.id == event.organizer_id).first()
-
-        event_responses.append(
-            {
-                "id": event.id,
-                "title": event.title,
-                "description": event.description,
-                "event_date": event.event_date,
-                "location": event.location,
-                "created_at": event.created_at,
-                "organizer_id": event.organizer_id,
-                "organizer_name": organizer.full_name if organizer else "Unknown",
-                "category_id": event.category_id,
-                "category_name": category.name if category else "Unknown",
-                "status": event.status,
-                "dormitory_id": event.dormitory_id,
-                "dormitory_name": dormitory.name if dormitory else None,
-                "is_private": event.is_private,
-                "requirements": event.requirements
-            }
-        )
-
-    total_pages = (total + size - 1) // size
+    events = (
+        query.order_by(Event.event_date.desc(), Event.id.desc())
+        .offset(skip)
+        .limit(size)
+        .all()
+    )
 
     return PaginatedEventResponse(
-        items=event_responses,
+        items=[_build_event_response(event) for event in events],
         total=total,
         page=page,
         size=size,
-        total_pages=total_pages
+        total_pages=(total + size - 1) // size,
     )
+
 
 @router.post("/events", response_model=dict)
 def create_event(
     event: EventCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin)
+    current_user: User = Depends(get_current_user),
 ):
-    # Проверка существования категории
+    """
+    Создать мероприятие.
+    """
+    if not can_manage_events(current_user):
+        raise HTTPException(status_code=403, detail="Недостаточно прав для создания мероприятия")
+
     category = db.query(Category).filter(Category.id == event.category_id).first()
     if not category:
         raise HTTPException(status_code=400, detail="Категория с указанным ID не найдена")
 
-    # Проверка существования общежития (если указано)
     if event.dormitory_id:
         dormitory = db.query(Dormitory).filter(Dormitory.id == event.dormitory_id).first()
         if not dormitory:
             raise HTTPException(status_code=400, detail="Общежитие с указанным ID не найдено")
 
-    # Создание нового мероприятия
     db_event = Event(
         title=event.title,
         description=event.description,
@@ -96,123 +121,76 @@ def create_event(
         dormitory_id=event.dormitory_id,
         status=event.status,
         is_private=event.is_private,
-        requirements=event.requirements
+        requirements=event.requirements,
     )
-    db.add(db_event)
-    db.commit()
-    db.refresh(db_event)
+    try:
+        db.add(db_event)
+        db.flush()
+        CalendarContentSyncService(db).sync_event(db_event, actor_id=current_user.id)
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Ошибка при создании мероприятия")
 
-    category = db.query(Category).filter(Category.id == db_event.category_id).first()
-    dormitory = db.query(Dormitory).filter(Dormitory.id == db_event.dormitory_id).first() if db_event.dormitory_id else None
-    organizer = db.query(User).filter(User.id == db_event.organizer_id).first()
+    created_event = _get_event_or_404(db, db_event.id)
+    return {**_build_event_response(created_event), "message": "Мероприятие успешно создано"}
 
-    return {
-        "id": db_event.id,
-        "title": db_event.title,
-        "description": db_event.description,
-        "event_date": db_event.event_date,
-        "location": db_event.location,
-        "created_at": db_event.created_at,
-        "organizer_id": db_event.organizer_id,
-        "organizer_name": organizer.full_name if organizer else "Unknown",
-        "category_id": db_event.category_id,
-        "category_name": category.name if category else "Unknown",
-        "status": db_event.status,
-        "dormitory_id": db_event.dormitory_id,
-        "dormitory_name": dormitory.name if dormitory else None,
-        "is_private": db_event.is_private,
-        "requirements": db_event.requirements,
-        "message": "Мероприятие успешно создано"
-    }
 
 @router.put("/events/{event_id}", response_model=dict)
 def update_event(
     event_id: int,
     event: EventUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin)
+    current_user: User = Depends(get_current_user),
 ):
-    db_event = db.query(Event).filter(Event.id == event_id).first()
-    if not db_event:
-        raise HTTPException(status_code=404, detail="Мероприятие не найдено")
-
-    # Проверка прав: только организатор или администратор может редактировать
-    if db_event.organizer_id != current_user.id and current_user.role_id != 1:
+    """
+    Обновить мероприятие.
+    """
+    db_event = _get_event_or_404(db, event_id)
+    if db_event.organizer_id != current_user.id and not can_manage_events(current_user):
         raise HTTPException(status_code=403, detail="Недостаточно прав для редактирования")
 
-    # Проверка существования категории
     if event.category_id:
         category = db.query(Category).filter(Category.id == event.category_id).first()
         if not category:
             raise HTTPException(status_code=400, detail="Категория с указанным ID не найдена")
 
-    # Проверка существования общежития (если указано)
     if event.dormitory_id:
         dormitory = db.query(Dormitory).filter(Dormitory.id == event.dormitory_id).first()
         if not dormitory:
             raise HTTPException(status_code=400, detail="Общежитие с указанным ID не найдено")
 
-    # Обновление полей
-    if event.title is not None:
-        db_event.title = event.title
-    if event.description is not None:
-        db_event.description = event.description
-    if event.event_date is not None:
-        db_event.event_date = event.event_date
-    if event.location is not None:
-        db_event.location = event.location
-    if event.category_id is not None:
-        db_event.category_id = event.category_id
-    if event.dormitory_id is not None:
-        db_event.dormitory_id = event.dormitory_id
-    if event.status is not None:
-        db_event.status = event.status
-    if event.is_private is not None:
-        db_event.is_private = event.is_private
-    if event.requirements is not None:
-        db_event.requirements = event.requirements
+    for field_name, value in event.model_dump(exclude_unset=True).items():
+        setattr(db_event, field_name, value)
 
-    db.commit()
-    db.refresh(db_event)
+    try:
+        CalendarContentSyncService(db).sync_event(db_event, actor_id=current_user.id)
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Ошибка при обновлении мероприятия")
+    updated_event = _get_event_or_404(db, db_event.id)
+    return {**_build_event_response(updated_event), "message": "Мероприятие успешно обновлено"}
 
-    category = db.query(Category).filter(Category.id == db_event.category_id).first()
-    dormitory = db.query(Dormitory).filter(Dormitory.id == db_event.dormitory_id).first() if db_event.dormitory_id else None
-    organizer = db.query(User).filter(User.id == db_event.organizer_id).first()
-
-    return {
-        "id": db_event.id,
-        "title": db_event.title,
-        "description": db_event.description,
-        "event_date": db_event.event_date,
-        "location": db_event.location,
-        "created_at": db_event.created_at,
-        "organizer_id": db_event.organizer_id,
-        "organizer_name": organizer.full_name if organizer else "Unknown",
-        "category_id": db_event.category_id,
-        "category_name": category.name if category else "Unknown",
-        "status": db_event.status,
-        "dormitory_id": db_event.dormitory_id,
-        "dormitory_name": dormitory.name if dormitory else None,
-        "is_private": db_event.is_private,
-        "requirements": db_event.requirements,
-        "message": "Мероприятие успешно обновлено"
-    }
 
 @router.delete("/events/{event_id}", response_model=dict)
 def delete_event(
     event_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin)
+    current_user: User = Depends(get_current_user),
 ):
-    db_event = db.query(Event).filter(Event.id == event_id).first()
-    if not db_event:
-        raise HTTPException(status_code=404, detail="Мероприятие не найдено")
-
-    # Проверка прав: только организатор или администратор может удалять
-    if db_event.organizer_id != current_user.id and current_user.role_id != 1:
+    """
+    Удалить мероприятие.
+    """
+    db_event = _get_event_or_404(db, event_id)
+    if db_event.organizer_id != current_user.id and not can_manage_events(current_user):
         raise HTTPException(status_code=403, detail="Недостаточно прав для удаления")
 
-    db.delete(db_event)
-    db.commit()
-
+    try:
+        CalendarContentSyncService(db).remove_event_calendar_projection(db_event.id)
+        db.delete(db_event)
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Ошибка при удалении мероприятия")
     return {"message": "Мероприятие успешно удалено", "event_id": event_id}

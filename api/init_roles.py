@@ -9,6 +9,13 @@ db = SessionLocal()
 roles = [
     {"id": 1, "role_name": "student", "role_description": "Обычный студент"},
     {"id": 2, "role_name": "admin", "role_description": "Администратор системы"},
+    {"id": 3, "role_name": "commandant", "role_description": "Комендант общежития"},
+    {"id": 4, "role_name": "moderator", "role_description": "Модератор маркетплейса"},
+    {"id": 5, "role_name": "sanitary_commission_member", "role_description": "Член санитарной комиссии"},
+    {"id": 6, "role_name": "sanitary_commission_head", "role_description": "Глава санитарной комиссии"},
+    {"id": 7, "role_name": "council_president", "role_description": "Председатель совета общежития"},
+    {"id": 8, "role_name": "council_member", "role_description": "Член совета общежития"},
+    {"id": 9, "role_name": "educator", "role_description": "Сотрудник / воспитатель"},
 ]
 
 try:

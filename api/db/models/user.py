@@ -45,3 +45,71 @@ class User(Base):
     cleanliness_history = relationship("CleanlinessHistory", back_populates="assigned_by_user", cascade="all, delete-orphan")
     user_violations = relationship("UserViolation", back_populates="user", cascade="all, delete-orphan")
     favorites = relationship("FavoriteProduct", back_populates="user", cascade="all, delete-orphan")
+    created_service_requests = relationship(
+        "ServiceRequest",
+        foreign_keys="ServiceRequest.student_id",
+        back_populates="student",
+        cascade="all, delete-orphan",
+    )
+    assigned_service_requests = relationship(
+        "ServiceRequest",
+        foreign_keys="ServiceRequest.executor_id",
+        back_populates="executor",
+    )
+    service_request_comments = relationship("ServiceRequestComment", back_populates="author", cascade="all, delete-orphan")
+    service_request_attachments = relationship(
+        "ServiceRequestAttachment",
+        back_populates="uploaded_by",
+        cascade="all, delete-orphan",
+    )
+    residence_history = relationship("ResidenceHistory", back_populates="user", cascade="all, delete-orphan")
+    payments = relationship(
+        "Payment",
+        foreign_keys="Payment.user_id",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    created_payments = relationship("Payment", foreign_keys="Payment.created_by_id", back_populates="created_by")
+    payment_top_ups = relationship(
+        "PaymentTopUp",
+        foreign_keys="PaymentTopUp.user_id",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    reviewed_payment_top_ups = relationship(
+        "PaymentTopUp",
+        foreign_keys="PaymentTopUp.reviewed_by_id",
+        back_populates="reviewed_by",
+    )
+    updated_payment_account_settings = relationship(
+        "PaymentAccountSettings",
+        foreign_keys="PaymentAccountSettings.updated_by_id",
+        back_populates="updated_by",
+    )
+    created_calendar_events = relationship(
+        "CalendarEvent",
+        foreign_keys="CalendarEvent.created_by_id",
+        back_populates="created_by",
+    )
+    updated_calendar_events = relationship(
+        "CalendarEvent",
+        foreign_keys="CalendarEvent.updated_by_id",
+        back_populates="updated_by",
+    )
+    created_kitchen_duty_plans = relationship(
+        "KitchenDutyPlan",
+        foreign_keys="KitchenDutyPlan.created_by_id",
+        back_populates="created_by",
+    )
+    rental_listings = relationship("RentalListing", back_populates="owner", cascade="all, delete-orphan")
+    rental_bookings = relationship(
+        "RentalBooking",
+        foreign_keys="RentalBooking.renter_id",
+        back_populates="renter",
+        cascade="all, delete-orphan",
+    )
+    approved_rental_bookings = relationship(
+        "RentalBooking",
+        foreign_keys="RentalBooking.approved_by_id",
+        back_populates="approved_by",
+    )

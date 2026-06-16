@@ -14,3 +14,4 @@ class Category(Base):
     news = relationship("News", back_populates="category")
     events = relationship("Event", back_populates="category")
     products = relationship("Product", back_populates="category")
+    rental_listings = relationship("RentalListing", back_populates="category")
