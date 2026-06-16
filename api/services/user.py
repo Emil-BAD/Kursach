@@ -312,3 +312,4 @@ def delete_user(
     db.delete(db_user)
     db.commit()
     return {"message": f"Пользователь с ID {user_id} успешно удалён"}
+
